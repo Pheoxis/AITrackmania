@@ -305,7 +305,7 @@ env_cls = partial(GenericGymEnv, id="real-time-gym-v1", gym_kwargs={"config": my
 
 # Memory:
 
-from custom_tmrl.memory import TorchMemory
+from memory import TorchMemory
 
 
 class MyMemory(TorchMemory):
