@@ -8,17 +8,17 @@ from copy import deepcopy
 
 from threading import Thread
 
-from tmrl.networking import Server, RolloutWorker, Trainer
-from tmrl.util import partial, cached_property
-from tmrl.envs import GenericGymEnv
+from networking import Server, RolloutWorker, Trainer
+from util import partial, cached_property
+from envs import GenericGymEnv
 
-from tmrl.actor import TorchActorModule
-from tmrl.util import prod
+from actor import TorchActorModule
+from util import prod
 
-import tmrl.config.config_constants as cfg
-from tmrl.training_offline import TorchTrainingOffline
-from tmrl.training import TrainingAgent
-from tmrl.custom.utils.nn import copy_shared, no_grad
+import config.config_constants as cfg
+from training_offline import TorchTrainingOffline
+from training import TrainingAgent
+from custom.utils.nn import copy_shared, no_grad
 
 
 CRC_DEBUG = False
@@ -305,7 +305,7 @@ env_cls = partial(GenericGymEnv, id="real-time-gym-v1", gym_kwargs={"config": my
 
 # Memory:
 
-from tmrl.memory import TorchMemory
+from custom_tmrl.memory import TorchMemory
 
 
 class MyMemory(TorchMemory):

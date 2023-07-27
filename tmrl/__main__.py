@@ -4,13 +4,13 @@ import logging
 import json
 
 # local imports
-import tmrl.config.config_constants as cfg
-import tmrl.config.config_objects as cfg_obj
-from tmrl.tools.record import record_reward_dist
-from tmrl.tools.check_environment import check_env_tm20lidar, check_env_tm20full
-from tmrl.envs import GenericGymEnv
-from tmrl.networking import Server, Trainer, RolloutWorker
-from tmrl.util import partial
+import config.config_constants as cfg
+import config.config_objects as cfg_obj
+from tools.record import record_reward_dist
+from tools.check_environment import check_env_tm20lidar, check_env_tm20full, check_env_tm20_trackmap
+from envs import GenericGymEnv
+from networking import Server, Trainer, RolloutWorker
+from util import partial
 
 
 def main(args):
@@ -58,24 +58,48 @@ def main(args):
         record_reward_dist(path_reward=cfg.REWARD_PATH)
     elif args.check_env:
         if cfg.PRAGMA_LIDAR:
-            check_env_tm20lidar()
+            if cfg.PRAGMA_TRACKMAP:
+                check_env_tm20_trackmap()
+            else:
+                check_env_tm20lidar()
         else:
             check_env_tm20full()
+    elif args.record_track:
+        pass
+        # record_track_map()
     else:
         raise ArgumentTypeError('Enter a valid argument')
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument('--server', action='store_true', help='launches the server')
-    parser.add_argument('--trainer', action='store_true', help='launches the trainer')
-    parser.add_argument('--worker', action='store_true', help='launches a rollout worker')
-    parser.add_argument('--test', action='store_true', help='runs inference without training')
-    parser.add_argument('--benchmark', action='store_true', help='runs a benchmark of the environment')
-    parser.add_argument('--record-reward', dest='record_reward', action='store_true', help='utility to record a reward function in TM20')
-    parser.add_argument('--check-environment', dest='check_env', action='store_true', help='utility to check the environment')
-    parser.add_argument('--no-wandb', dest='no_wandb', action='store_true', help='(use with --trainer) if you do not want to log results on Weights and Biases, use this option')
-    parser.add_argument('-d', '--config', type=json.loads, default={}, help='dictionary containing configuration options (modifiers) for the rtgym environment')
+    parser.add_argument('--server', action='store_true',
+                        help='launches the server')
+
+    parser.add_argument('--trainer', action='store_true',
+                        help='launches the trainer')
+
+    parser.add_argument('--worker', action='store_true',
+                        help='launches a rollout worker')
+
+    parser.add_argument('--test', action='store_true',
+                        help='runs inference without training')
+
+    parser.add_argument('--benchmark', action='store_true',
+                        help='runs a benchmark of the environment')
+
+    parser.add_argument('--record-reward', dest='record_reward', action='store_true',
+                        help='utility to record a reward function in TM20')
+
+    parser.add_argument('--check-environment', dest='check_env', action='store_true',
+                        help='utility to check the environment')
+
+    parser.add_argument('--no-wandb', dest='no_wandb', action='store_true',
+                        help='(use with --trainer) if you do not want to log results on Weights and Biases, use this option')
+
+    parser.add_argument('-d', '--config', type=json.loads, default={},
+                        help='dictionary containing configuration options (modifiers) for the rtgym environment')
+
     arguments = parser.parse_args()
     logging.info(arguments)
 

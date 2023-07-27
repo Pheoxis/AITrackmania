@@ -40,11 +40,12 @@ ENV_CONFIG = TMRL_CONFIG["ENV"]
 RTGYM_INTERFACE = ENV_CONFIG["RTGYM_INTERFACE"]
 PRAGMA_LIDAR = RTGYM_INTERFACE.endswith("LIDAR")  # True if Lidar, False if images
 PRAGMA_PROGRESS = RTGYM_INTERFACE.endswith("LIDARPROGRESS")
-if PRAGMA_PROGRESS:
+PRAGMA_TRACKMAP = RTGYM_INTERFACE.endswith("TRACKMAP")
+if PRAGMA_PROGRESS or PRAGMA_TRACKMAP:
     PRAGMA_LIDAR = True
 LIDAR_BLACK_THRESHOLD = [55, 55, 55]  # [88, 88, 88] for tiny road, [55, 55, 55] FOR BASIC ROAD
 REWARD_END_OF_TRACK = 100  # bonus reward at the end of the track
-CONSTANT_PENALTY = 0  # should be <= 0 : added to the reward at each time step
+CONSTANT_PENALTY = -1  # should be <= 0 : added to the reward at each time step
 SLEEP_TIME_AT_RESET = ENV_CONFIG["SLEEP_TIME_AT_RESET"]  # 1.5 to start in a Markov state with the lidar
 IMG_HIST_LEN = ENV_CONFIG["IMG_HIST_LEN"]  # 4 without RNN, 1 with RNN
 ACT_BUF_LEN = ENV_CONFIG["RTGYM_CONFIG"]["act_buf_len"]

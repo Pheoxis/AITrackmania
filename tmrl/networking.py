@@ -15,10 +15,10 @@ from requests import get
 from tlspyo import Relay, Endpoint
 
 # local imports
-from tmrl.actor import ActorModule
-from tmrl.util import dump, load, partial_to_dict
-import tmrl.config.config_constants as cfg
-import tmrl.config.config_objects as cfg_obj
+from actor import ActorModule
+from util import dump, load, partial_to_dict
+import config.config_constants as cfg
+import config.config_objects as cfg_obj
 
 import logging
 
@@ -508,7 +508,7 @@ class RolloutWorker:
         self.crc_debug = crc_debug
         self.model_history = model_history
         self._cur_hist_cpt = 0
-
+        self.start_time = time.time()
         self.server_ip = server_ip if server_ip is not None else '127.0.0.1'
 
         print_with_timestamp(f"server IP: {self.server_ip}")

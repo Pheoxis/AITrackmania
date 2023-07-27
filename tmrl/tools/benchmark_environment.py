@@ -8,8 +8,9 @@ from gymnasium import spaces
 from rtgym.envs.real_time_env import DEFAULT_CONFIG_DICT
 
 # local imports
-from tmrl.custom.custom_gym_interfaces import (TM2020Interface, TM2020InterfaceLidar)
 import logging
+
+from custom.interfaces.TM2020InterfaceLidar import TM2020InterfaceLidar
 
 NB_STEPS = 1000
 ACT_COMPUTE_MIN = 0.0

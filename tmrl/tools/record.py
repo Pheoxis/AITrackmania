@@ -7,8 +7,8 @@ import keyboard
 import numpy as np
 
 # local imports
-import tmrl.config.config_constants as cfg
-from tmrl.custom.utils.tools import TM2020OpenPlanetClient
+import config.config_constants as cfg
+from custom.utils.tools import TM2020OpenPlanetClient
 import logging
 
 

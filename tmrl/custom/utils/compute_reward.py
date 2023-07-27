@@ -49,48 +49,27 @@ class RewardFunction:
         # self.traj = []
 
     def compute_reward(self, pos):
-        """
-        Computes the current reward given the position pos
-        Args:
-            pos: the current position
-        Returns:
-            float, bool: the reward and the terminated signal
-        """
-        # self.traj.append(pos)
-
         terminated = False
-        self.step_counter += 1  # step counter to enable failure counter
-        min_dist = np.inf  # smallest distance found so far in the trajectory to the target pos
-        index = self.cur_idx  # cur_idx is where we were last step in the trajectory
-        temp = self.nb_obs_forward  # counter used to find cuts
-        best_index = 0  # index best matching the target pos
-
+        self.step_counter += 1
+        min_dist = np.inf
+        index = self.cur_idx
+        temp = self.nb_obs_forward
+        best_index = 0
         while True:
-            dist = np.linalg.norm(pos - self.data[index])  # distance of the current index to target pos
-            if dist <= min_dist:  # if dist is smaller than our minimum found distance so far,
-                min_dist = dist  # then we found a new best distance,
-                best_index = index  # and a new best index
-                temp = self.nb_obs_forward  # we will have to check this number of positions to find a possible cut
-            index += 1  # now we will evaluate the next index in the trajectory
-            temp -= 1  # so we can decrease the counter for cuts
+            dist = np.linalg.norm(pos - self.data[index])
+            if dist <= min_dist:
+                min_dist = dist
+                best_index = index
+                temp = self.nb_obs_forward
+            index += 1
+            temp -= 1
             # stop condition
-            if index >= self.datalen or temp <= 0:  # if trajectory complete or cuts counter depleted
-                # We check that we are not too far from the demo trajectory:
-                if min_dist > self.max_dist_from_traj:
-                    best_index = self.cur_idx  # if so, consider we didn't move
-
-                # print(f"DEBUG: min_dist={min_dist:.3f}, pos:[{pos[0].item():.3f}, {pos[1].item():.3f}, {pos[2].item():.3f}] / [{self.data[best_index][0].item():.3f}, {self.data[best_index][1].item():.3f}, {self.data[best_index][2].item():.3f}], index:{best_index}")
-
-                break  # we found the best index and can break the while loop
-
-        # The reward is then proportional to the number of passed indexes (i.e., track distance):
+            if index >= self.datalen or temp <= 0:
+                break
         reward = (best_index - self.cur_idx) / 100.0
-
         if best_index == self.cur_idx:  # if the best index didn't change, we rewind (more Markovian reward)
             min_dist = np.inf
             index = self.cur_idx
-
-            # Find the best matching index in rewind:
             while True:
                 dist = np.linalg.norm(pos - self.data[index])
                 if dist <= min_dist:
@@ -102,19 +81,15 @@ class RewardFunction:
                 # stop condition
                 if index <= 0 or temp <= 0:
                     break
-
-            # If failure happens for too many steps, the episode terminates
             if self.step_counter > self.min_nb_steps_before_failure:
                 self.failure_counter += 1
                 if self.failure_counter > self.nb_zero_rew_before_failure:
                     terminated = True
 
-        else:  # if we did progress on the track
-            self.failure_counter = 0  # we reset the counter triggering episode termination
-
-        self.cur_idx = best_index  # finally, we save our new best matching index
-
-        return reward, terminated
+        else:
+            self.failure_counter = 0
+        self.cur_idx = best_index
+        return reward, terminated, self.failure_counter
 
     def reset(self):
         """

@@ -12,7 +12,7 @@ if platform.system() == "Windows":
         import win32con
     except ImportError as e1:
         logging.info("pywin32 failed to import. Attempting to fix pywin32 installation...")
-        from tmrl.tools.init_package.init_pywin32 import fix_pywin32
+        from tools.init_package.init_pywin32 import fix_pywin32
         try:
             fix_pywin32()
             import win32gui
@@ -27,8 +27,8 @@ if platform.system() == "Windows":
 # do not remove this
 from dataclasses import dataclass
 
-from tmrl.envs import GenericGymEnv
-from tmrl.config.config_objects import CONFIG_DICT
+from envs import GenericGymEnv
+from config.config_objects import CONFIG_DICT
 
 
 def get_environment():

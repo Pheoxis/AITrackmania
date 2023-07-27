@@ -1,9 +1,9 @@
 # third-party imports
 import numpy as np
-import cv2
 
 # local imports
-from tmrl.memory import TorchMemory
+from memory import TorchMemory
+
 
 # LOCAL BUFFER COMPRESSION ==============================
 

@@ -1,21 +1,27 @@
 # third-party imports
 # from tmrl.custom.custom_checkpoints import load_run_instance_images_dataset, dump_run_instance_images_dataset
 # third-party imports
-import numpy as np
 import rtgym
 
 # local imports
-import tmrl.config.config_constants as cfg
-from tmrl.training_offline import TorchTrainingOffline
-from tmrl.custom.custom_gym_interfaces import TM2020Interface, TM2020InterfaceLidar, TM2020InterfaceLidarProgress
-from tmrl.custom.custom_memories import MemoryTMFull, MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs
-from tmrl.custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs,obs_preprocessor_tm_lidar_progress_act_in_obs
-from tmrl.envs import GenericGymEnv
-from tmrl.custom.custom_models import SquashedGaussianMLPActor, MLPActorCritic, REDQMLPActorCritic, RNNActorCritic, SquashedGaussianRNNActor, SquashedGaussianVanillaCNNActor, VanillaCNNActorCritic, SquashedGaussianVanillaColorCNNActor, VanillaColorCNNActorCritic
-from tmrl.custom.custom_algorithms import SpinupSacAgent as SAC_Agent
-from tmrl.custom.custom_algorithms import REDQSACAgent as REDQ_Agent
-from tmrl.custom.custom_checkpoints import update_run_instance
-from tmrl.util import partial
+import config.config_constants as cfg
+from custom.interfaces.TM2020Interface import TM2020Interface
+from custom.interfaces.TM2020InterfaceLidar import TM2020InterfaceLidar
+from custom.interfaces.TM2020InterfaceLidarProgress import TM2020InterfaceLidarProgress
+from custom.interfaces.TM2020InterfaceTrackMap import TM2020InterfaceTrackMap
+from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
+from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
+from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
+from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
+from custom.models.VanillaColorCNNActorCritic import VanillaColorCNNActorCritic, SquashedGaussianVanillaColorCNNActor
+from training_offline import TorchTrainingOffline
+from custom.custom_memories import MemoryTMFull, MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs
+from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs,obs_preprocessor_tm_lidar_progress_act_in_obs
+from envs import GenericGymEnv
+from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
+from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
+from custom.custom_checkpoints import update_run_instance
+from util import partial
 
 
 ALG_CONFIG = cfg.TMRL_CONFIG["ALG"]
@@ -42,6 +48,8 @@ else:
 if cfg.PRAGMA_LIDAR:
     if cfg.PRAGMA_PROGRESS:
         INT = partial(TM2020InterfaceLidarProgress, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
+    elif cfg.PRAGMA_TRACKMAP:
+        INT = partial(TM2020InterfaceTrackMap, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
     else:
         INT = partial(TM2020InterfaceLidar, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
 else:
