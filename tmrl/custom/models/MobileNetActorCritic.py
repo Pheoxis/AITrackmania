@@ -48,21 +48,21 @@ class ActorCriticMobileNetV3(nn.Module):
         self.rnn_size = rnn_size
         self.rnn_len = rnn_len
 
-    def extract_features(self, obs):
-        # Preprocess observations for MobileNetV3
-        transform = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
-
-        processed_obs = torch.cat([transform(o).unsqueeze(0) for o in obs], dim=0)
-
-        with torch.no_grad():
-            features = self.mobilenet(processed_obs)
-
-        return features
+    # def extract_features(self, obs):
+    #     # Preprocess observations for MobileNetV3
+    #     transform = transforms.Compose([
+    #         transforms.Resize(256),
+    #         transforms.CenterCrop(224),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    #     ])
+    #
+    #     processed_obs = torch.cat([transform(o).unsqueeze(0) for o in obs], dim=0)
+    #
+    #     with torch.no_grad():
+    #         features = self.mobilenet(processed_obs)
+    #
+    #     return features
 
     def forward(self, obs_seq, test=False, with_logprob=True, save_hidden=False):
         """
@@ -126,4 +126,7 @@ class ActorCriticMobileNetV3(nn.Module):
         obs_seq = tuple(o.view(1, *o.shape) for o in obs)  # artificially add sequence dimension
         with torch.no_grad():
             a, _ = self.forward(obs_seq=obs_seq, test=test, with_logprob=False, save_hidden=True)
-            return a.cpu().numpy()
+            if torch.cuda.is_available():
+                return a.gpu().numpy()
+            else:
+                return a.cpu().numpy()
