@@ -9,6 +9,7 @@ from custom.interfaces.TM2020Interface import TM2020Interface
 from custom.interfaces.TM2020InterfaceLidar import TM2020InterfaceLidar
 from custom.interfaces.TM2020InterfaceLidarProgress import TM2020InterfaceLidarProgress
 from custom.interfaces.TM2020InterfaceTrackMap import TM2020InterfaceTrackMap
+from custom.models import MobileNetActorCritic
 from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
@@ -40,10 +41,15 @@ if cfg.PRAGMA_LIDAR:
         TRAIN_MODEL = MLPActorCritic if ALG_NAME == "SAC" else REDQMLPActorCritic
         POLICY = SquashedGaussianMLPActor
 else:
-    assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
-    assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
-    TRAIN_MODEL = VanillaCNNActorCritic if cfg.GRAYSCALE else VanillaColorCNNActorCritic
-    POLICY = SquashedGaussianVanillaCNNActor if cfg.GRAYSCALE else SquashedGaussianVanillaColorCNNActor
+    if cfg.PRAGMA_CUSTOM:
+        assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
+        TRAIN_MODEL = MobileNetActorCritic #mojaKlasa
+        POLICY = SquashedGaussianRNNActor #mojaKlasa
+    else:
+        assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
+        assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
+        TRAIN_MODEL = VanillaCNNActorCritic if cfg.GRAYSCALE else VanillaColorCNNActorCritic
+        POLICY = SquashedGaussianVanillaCNNActor if cfg.GRAYSCALE else SquashedGaussianVanillaColorCNNActor
 
 if cfg.PRAGMA_LIDAR:
     if cfg.PRAGMA_PROGRESS:
