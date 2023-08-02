@@ -4,8 +4,8 @@ import torch.nn.functional as F
 from torch import nn
 from torch.distributions import Normal
 import torch
+from util import prod
 from torchvision import transforms
-import gym
 from custom.models.MobileNetV3 import mobilenetv3_large
 from custom.models.model_constants import LOG_STD_MIN, LOG_STD_MAX
 # Assuming you have already defined `rnn` and other utility functions
@@ -36,7 +36,7 @@ class SquashedActorCriticMobileNetV3(nn.Module):
         self.mobilenet = mobilenetv3_large(pretrained=True)
         self.mobilenet.eval()
 
-        dim_obs = 1280
+        dim_obs = sum(prod(s for s in space.shape) for space in obs_space)
         dim_act = act_space.shape[0]
         self.shared_rnn = shared_rnn
         self.mlp = mlp([shared_rnn.rnn_size] + list(mlp_sizes), activation, activation)

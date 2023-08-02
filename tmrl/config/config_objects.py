@@ -9,10 +9,10 @@ from custom.interfaces.TM2020Interface import TM2020Interface
 from custom.interfaces.TM2020InterfaceLidar import TM2020InterfaceLidar
 from custom.interfaces.TM2020InterfaceLidarProgress import TM2020InterfaceLidarProgress
 from custom.interfaces.TM2020InterfaceTrackMap import TM2020InterfaceTrackMap
-from custom.models import MobileNetActorCritic
 from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
+from custom.models.MobileNetActorCritic import MobileNetActorCritic, SquashedActorCriticMobileNetV3
 from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
 from custom.models.VanillaColorCNNActorCritic import VanillaColorCNNActorCritic, SquashedGaussianVanillaColorCNNActor
 from training_offline import TorchTrainingOffline
@@ -44,7 +44,7 @@ else:
     if cfg.PRAGMA_CUSTOM:
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
         TRAIN_MODEL = MobileNetActorCritic #mojaKlasa
-        POLICY = SquashedGaussianRNNActor #mojaKlasa
+        POLICY = SquashedActorCriticMobileNetV3 #mojaKlasa
     else:
         assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
