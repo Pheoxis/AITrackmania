@@ -30,39 +30,22 @@ def mlp(sizes, activation=nn.ReLU, output_activation=None):
     return nn.Sequential(*layers)
 
 
-class ActorCriticMobileNetV3(nn.Module):
-    def __init__(self, obs_space, act_space, rnn_size=100, rnn_len=2, mlp_sizes=(100, 100), activation=nn.ReLU):
+class SquashedActorCriticMobileNetV3(nn.Module):
+    def __init__(self, obs_space, act_space, shared_rnn, mlp_sizes=(100, 100), activation=nn.ReLU):
         super().__init__()
-        self.mobilenet = mobilenetv3_large(pretrained=True)  # Load the pre-trained MobileNetV3 model
-        self.mobilenet.eval()  # Freeze the pre-trained model
+        self.mobilenet = mobilenetv3_large(pretrained=True)
+        self.mobilenet.eval()
 
-        dim_obs = 1280  # Output feature size from MobileNetV3
+        dim_obs = 1280
         dim_act = act_space.shape[0]
-        act_limit = act_space.high[0]
-        self.rnn = rnn(dim_obs, rnn_size, rnn_len)
-        self.mlp = mlp([rnn_size] + list(mlp_sizes), activation, activation)
+        self.shared_rnn = shared_rnn
+        self.mlp = mlp([shared_rnn.rnn_size] + list(mlp_sizes), activation, activation)
         self.mu_layer = nn.Linear(mlp_sizes[-1], dim_act)
         self.log_std_layer = nn.Linear(mlp_sizes[-1], dim_act)
-        self.act_limit = act_limit
-        self.h = None
-        self.rnn_size = rnn_size
-        self.rnn_len = rnn_len
-
-    # def extract_features(self, obs):
-    #     # Preprocess observations for MobileNetV3
-    #     transform = transforms.Compose([
-    #         transforms.Resize(256),
-    #         transforms.CenterCrop(224),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    #     ])
-    #
-    #     processed_obs = torch.cat([transform(o).unsqueeze(0) for o in obs], dim=0)
-    #
-    #     with torch.no_grad():
-    #         features = self.mobilenet(processed_obs)
-    #
-    #     return features
+        self.act_limit = act_space.high[0]
+        self.log_std_min = LOG_STD_MIN
+        self.log_std_max = LOG_STD_MAX
+        self.squash_correction = 2 * (np.log(2) - np.log(self.act_limit))
 
     def forward(self, obs_seq, test=False, with_logprob=True, save_hidden=False):
         """
@@ -130,3 +113,55 @@ class ActorCriticMobileNetV3(nn.Module):
                 return a.gpu().numpy()
             else:
                 return a.cpu().numpy()
+
+class MobileNetQFunction(nn.Module):
+    def __init__(self, obs_space, act_space, rnn_size=100, rnn_len=2, mlp_sizes=(100, 100), activation=nn.ReLU):
+        super().__init__()
+        dim_obs = sum(np.prod(space.shape) for space in obs_space)
+        dim_act = act_space.shape[0]
+        self.rnn = rnn(dim_obs, rnn_size, rnn_len)
+        self.mlp = mlp([rnn_size + dim_act] + list(mlp_sizes) + [1], activation)
+        self.h = None
+        self.rnn_size = rnn_size
+        self.rnn_len = rnn_len
+
+    def forward(self, obs_seq, act, save_hidden=False):
+        """
+        obs: observation
+        h: hidden state
+        Returns:
+            pi_action, log_pi, h
+        """
+        self.rnn.flatten_parameters()
+
+        batch_size = obs_seq[0].shape[0]
+
+        if not save_hidden or self.h is None:
+            device = obs_seq[0].device
+            h = torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device)
+        else:
+            h = self.h
+
+        obs_seq_cat = torch.cat(obs_seq, -1)
+
+        net_out, h = self.rnn(obs_seq_cat, h)
+        net_out = net_out[:, -1]
+        net_out = torch.cat((net_out, act), -1)
+        q = self.mlp(net_out)
+
+        if save_hidden:
+            self.h = h
+
+        return torch.squeeze(q, -1)  # Critical to ensure q has the right shape.
+
+class MobileNetActorCritic(nn.Module):
+    def __init__(self, observation_space, action_space, rnn_size=100,
+                 rnn_len=2, mlp_sizes=(100, 100), activation=nn.ReLU):
+        super().__init__()
+
+        # act_limit = action_space.high[0]
+
+        # build policy and value functions
+        self.actor = SquashedActorCriticMobileNetV3(observation_space, action_space, rnn_size, rnn_len, mlp_sizes, activation)
+        self.q1 = MobileNetQFunction(observation_space, action_space, rnn_size, rnn_len, mlp_sizes, activation)
+        self.q2 = MobileNetQFunction(observation_space, action_space, rnn_size, rnn_len, mlp_sizes, activation)
