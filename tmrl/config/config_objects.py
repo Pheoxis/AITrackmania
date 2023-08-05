@@ -12,7 +12,7 @@ from custom.interfaces.TM2020InterfaceTrackMap import TM2020InterfaceTrackMap
 from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
-from custom.models.MobileNetActorCritic import MobileNetActorCritic, SquashedActorCriticMobileNetV3
+from custom.models.MobileNetActorCritic import MobileNetActorCritic, SquashedActorMobileNetV3
 from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
 from custom.models.VanillaColorCNNActorCritic import VanillaColorCNNActorCritic, SquashedGaussianVanillaColorCNNActor
 from training_offline import TorchTrainingOffline
@@ -44,12 +44,12 @@ else:
     if cfg.PRAGMA_CUSTOM:
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
         TRAIN_MODEL = MobileNetActorCritic #mojaKlasa
-        POLICY = SquashedActorCriticMobileNetV3 #mojaKlasa
+        POLICY = SquashedActorMobileNetV3 #mojaKlasa
     else:
         assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = VanillaCNNActorCritic if cfg.GRAYSCALE else VanillaColorCNNActorCritic
-        POLICY = SquashedGaussianVanillaCNNActor if cfg.GRAYSCALE else SquashedGaussianVanillaColorCNNActor
+        TRAIN_MODEL = MobileNetActorCritic
+        POLICY = SquashedActorMobileNetV3
 
 if cfg.PRAGMA_LIDAR:
     if cfg.PRAGMA_PROGRESS:

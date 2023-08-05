@@ -1,14 +1,31 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torchvision.transforms.functional as TF
 from torch import nn
 from torch.distributions import Normal
 import torch
 from util import prod
-from torchvision import transforms
 from custom.models.MobileNetV3 import mobilenetv3_large
 from custom.models.model_constants import LOG_STD_MIN, LOG_STD_MAX
+from custom.models.model_blocks import mlp
+from actor import TorchActorModule
+
+LOG_STD_MIN = -20
+LOG_STD_MAX = 2
 # Assuming you have already defined `rnn` and other utility functions
+def conv1x1(self, x):
+    x = torch.squeeze(x, dim=2)  # Squeeze the third dimension
+    x = torch.squeeze(x, dim=2)  # Squeeze the fourth dimension
+    return F.conv2d(x, self.conv1x1_weights)
+
+def preprocess_image(image, target_channels=1):
+    if image.shape[1] == target_channels:
+        # The image already has the target number of channels
+        return image
+    # Convert the image to grayscale (target_channels=1)
+    gray_image = TF.rgb_to_grayscale(image)
+    return gray_image
 
 def rnn(input_size, rnn_size, rnn_len):
     num_rnn_layers = rnn_len
@@ -22,41 +39,38 @@ def rnn(input_size, rnn_size, rnn_len):
     return gru
 
 
-def mlp(sizes, activation=nn.ReLU, output_activation=None):
-    layers = []
-    for i in range(len(sizes) - 1):
-        act = activation if i < len(sizes) - 2 else output_activation
-        layers += [nn.Linear(sizes[i], sizes[i + 1]), act()]
-    return nn.Sequential(*layers)
+# def mlp(sizes, activation=nn.ReLU, output_activation=None):
+#     layers = []
+#     for i in range(len(sizes) - 1):
+#         act = activation if i < len(sizes) - 2 else output_activation
+#         layers += [nn.Linear(sizes[i], sizes[i + 1]), act()]
+#     return nn.Sequential(*layers)
 
 
-class SquashedActorCriticMobileNetV3(nn.Module):
-    def __init__(self, obs_space, act_space, shared_rnn, mlp_sizes=(100, 100), activation=nn.ReLU):
-        super().__init__()
-        self.mobilenet = mobilenetv3_large(pretrained=True)
+class SquashedActorMobileNetV3(TorchActorModule):
+    def __init__(self, observation_space, action_space, rnn_size=100, rnn_len=2, mlp_sizes=(100, 100), activation=nn.ReLU):
+        super().__init__(observation_space, action_space)
+        self.mobilenet = mobilenetv3_large()
         self.mobilenet.eval()
 
-        dim_obs = sum(prod(s for s in space.shape) for space in obs_space)
-        dim_act = act_space.shape[0]
-        self.shared_rnn = shared_rnn
-        self.mlp = mlp([shared_rnn.rnn_size] + list(mlp_sizes), activation, activation)
+        dim_obs = sum(prod(s for s in space.shape) for space in observation_space)
+        dim_act = action_space.shape[0]
+        self.rnn = rnn(dim_obs, rnn_size, rnn_len)
+        self.mlp = mlp([rnn_size + dim_act] + list(mlp_sizes) + [1], activation)
         self.mu_layer = nn.Linear(mlp_sizes[-1], dim_act)
         self.log_std_layer = nn.Linear(mlp_sizes[-1], dim_act)
-        self.act_limit = act_space.high[0]
+        self.act_limit = action_space.high[0]
         self.log_std_min = LOG_STD_MIN
         self.log_std_max = LOG_STD_MAX
         self.squash_correction = 2 * (np.log(2) - np.log(self.act_limit))
+        self.h = None
+        self.rnn_size = rnn_size
+        self.rnn_len = rnn_len
+        self.conv1x1_weights = nn.Parameter(torch.randn(1, rnn_size, 1, 1))
+
 
     def forward(self, obs_seq, test=False, with_logprob=True, save_hidden=False):
-        """
-        obs: observation
-        h: hidden state
-        Returns:
-            pi_action, log_pi, h
-        """
         self.rnn.flatten_parameters()
-
-        # sequence_len = obs_seq[0].shape[0]
         batch_size = obs_seq[0].shape[0]
 
         if not save_hidden or self.h is None:
@@ -65,11 +79,26 @@ class SquashedActorCriticMobileNetV3(nn.Module):
         else:
             h = self.h
 
-        features = self.extract_features(obs_seq)
-        features = features.view(features.size(0), -1)
+        # Reshape tensors in obs_seq to have 3 dimensions (sequence_len, batch_size, features)
+        obs_seq_resized = [preprocess_image(o.view(o.shape[0], o.shape[1], o.shape[2], -1), target_channels=1) for o in
+                           obs_seq]
 
-        net_out, h = self.rnn(features, h)
-        net_out = net_out[:, -1]
+        # Pack the tensors in obs_seq_resized to handle variable sequence lengths
+        obs_seq_packed = nn.utils.rnn.pack_sequence(obs_seq_resized)
+
+        # Pass the packed sequence through the GRU
+        net_out, h = self.rnn(obs_seq_packed, h)
+
+        # Unpack the packed output of the GRU
+        net_out, _ = nn.utils.rnn.pad_packed_sequence(net_out)
+
+        # Get the last step output of the GRU
+        net_out = net_out[-1]
+
+        # Adjust the output shape of the MobileNetV3 network to match the expected input shape for the GRU
+        # Apply 1x1 convolution to reduce the features dimension to rnn_size
+        net_out = self.conv1x1(net_out)
+
         net_out = self.mlp(net_out)
         mu = self.mu_layer(net_out)
         log_std = self.log_std_layer(net_out)
@@ -85,11 +114,6 @@ class SquashedActorCriticMobileNetV3(nn.Module):
             pi_action = pi_distribution.rsample()
 
         if with_logprob:
-            # Compute logprob from Gaussian, and then apply correction for Tanh squashing.
-            # NOTE: The correction formula is a little bit magic. To get an understanding
-            # of where it comes from, check out the original SAC paper (arXiv 1801.01290)
-            # and look in appendix C. This is a more numerically-stable equivalent to Eq 21.
-            # Try deriving it yourself as a (very difficult) exercise. :)
             logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
             logp_pi -= (2 * (np.log(2) - pi_action - F.softplus(-2 * pi_action))).sum(axis=1)
         else:
@@ -126,14 +150,7 @@ class MobileNetQFunction(nn.Module):
         self.rnn_len = rnn_len
 
     def forward(self, obs_seq, act, save_hidden=False):
-        """
-        obs: observation
-        h: hidden state
-        Returns:
-            pi_action, log_pi, h
-        """
         self.rnn.flatten_parameters()
-
         batch_size = obs_seq[0].shape[0]
 
         if not save_hidden or self.h is None:
@@ -142,7 +159,22 @@ class MobileNetQFunction(nn.Module):
         else:
             h = self.h
 
-        obs_seq_cat = torch.cat(obs_seq, -1)
+        # Reshape tensors in obs_seq to have 3 dimensions (sequence_len, batch_size, features)
+        obs_seq_resized = [preprocess_image(o.view(o.shape[0], o.shape[1], o.shape[2], -1), target_channels=1) for o in
+                           obs_seq]
+
+        # Use adaptive_avg_pool2d to resize the tensors to a fixed size
+        max_dim2_size = max(o.shape[2] for o in obs_seq_resized)
+        max_dim3_size = max(o.shape[3] for o in obs_seq_resized)
+        obs_seq_resized = [
+            F.adaptive_avg_pool2d(o, output_size=(max_dim2_size, max_dim3_size)) for o in obs_seq_resized
+        ]
+
+        # Transpose the tensors in obs_seq_resized to have the shape (sequence_len, batch_size, features)
+        obs_seq_resized = [o.squeeze(dim=3).permute(0, 1, 3, 2) for o in obs_seq_resized]
+
+        # Concatenate the tensors in obs_seq_resized along the second dimension (sequence_len)
+        obs_seq_cat = torch.cat(obs_seq_resized, dim=1)
 
         net_out, h = self.rnn(obs_seq_cat, h)
         net_out = net_out[:, -1]
@@ -152,7 +184,8 @@ class MobileNetQFunction(nn.Module):
         if save_hidden:
             self.h = h
 
-        return torch.squeeze(q, -1)  # Critical to ensure q has the right shape.
+        return torch.squeeze(q, -1)
+
 
 class MobileNetActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, rnn_size=100,
@@ -162,6 +195,7 @@ class MobileNetActorCritic(nn.Module):
         # act_limit = action_space.high[0]
 
         # build policy and value functions
-        self.actor = SquashedActorCriticMobileNetV3(observation_space, action_space, rnn_size, rnn_len, mlp_sizes, activation)
+        self.actor = SquashedActorMobileNetV3(observation_space, action_space, rnn_size, rnn_len, mlp_sizes,
+                                              activation)
         self.q1 = MobileNetQFunction(observation_space, action_space, rnn_size, rnn_len, mlp_sizes, activation)
         self.q2 = MobileNetQFunction(observation_space, action_space, rnn_size, rnn_len, mlp_sizes, activation)
