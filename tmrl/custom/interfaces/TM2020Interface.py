@@ -120,6 +120,7 @@ class TM2020Interface(RealTimeGymInterface):
         else:
             img = img[:, :, ::-1]  # reversed view for numpy RGB convention
         data = self.client.retrieve_data()
+        # print(f"data: {data}")
         self.img = img  # for render()
         return data, img
 
@@ -193,23 +194,23 @@ class TM2020Interface(RealTimeGymInterface):
         rpm = np.array([
             data[10],
         ], dtype='float32')
-        rew, terminated, failure_counter = self.reward_function.compute_reward(
+        reward, terminated, failure_counter = self.reward_function.compute_reward(
             pos=np.array([data[2], data[3], data[4]]))
         self.img_hist.append(img)
         imgs = np.array(list(self.img_hist))
-        obs = [speed, gear, rpm, imgs]
+        observation = [speed, gear, rpm, imgs]
         end_of_track = bool(data[8])
         info = {}
         if end_of_track:
             terminated = True
-            rew += self.finish_reward
+            reward += self.finish_reward
             if self.save_replays:
                 mouse_save_replay_tm20(True)
-        rew += self.constant_penalty
-        rew = np.float32(rew)
-        return obs, rew, terminated, info
+        reward += self.constant_penalty
+        reward = np.float32(reward)
+        return observation, reward, terminated, info
 
-    def get_observation_space(self):
+    def get_observation_space(self) -> spaces.Tuple:
         """
         must be a Tuple
         """

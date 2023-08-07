@@ -11,7 +11,7 @@ from tools.check_environment import check_env_tm20lidar, check_env_tm20full, che
 from envs import GenericGymEnv
 from networking import Server, Trainer, RolloutWorker
 from util import partial
-
+logging.basicConfig(level=logging.INFO)
 
 def main(args):
     if args.server:

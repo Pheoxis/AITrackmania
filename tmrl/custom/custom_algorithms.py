@@ -16,7 +16,7 @@ from training import TrainingAgent
 import config.config_constants as cfg
 
 import logging
-
+logging.basicConfig(level=logging.INFO)
 
 # Soft Actor-Critic ====================================================================================================
 
@@ -153,7 +153,7 @@ class REDQSACAgent(TrainingAgent):
 
 # REDQ-SAC =============================================================================================================
 
-@dataclass(eq=0)
+@dataclass(eq=False)
 class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
     observation_space: type
     action_space: type
