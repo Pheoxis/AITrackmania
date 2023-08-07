@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.distributions import Normal
+import torch
 
 from actor import TorchActorModule
 from custom.models.model_blocks import VanillaCNN

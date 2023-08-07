@@ -501,7 +501,7 @@ class RolloutWorker:
         self.model_path = model_path
         self.model_path_history = model_path_history
         self.device = device
-        self.actor = actor_module_cls(observation_space=obs_space, action_space=act_space).to_device(self.device)
+        self.actor = actor_module_cls(observation_space=obs_space, action_space=act_space).to(self.device)
         self.standalone = standalone
         if os.path.isfile(self.model_path):
             logging.debug(f"Loading model from {self.model_path}")
