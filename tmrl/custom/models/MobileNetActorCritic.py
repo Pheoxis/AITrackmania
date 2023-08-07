@@ -19,14 +19,6 @@ def conv1x1(self, x):
     x = torch.squeeze(x, dim=2)  # Squeeze the fourth dimension
     return F.conv2d(x, self.conv1x1_weights)
 
-def preprocess_image(image, target_channels=1):
-    if image.shape[1] == target_channels:
-        # The image already has the target number of channels
-        return image
-    # Convert the image to grayscale (target_channels=1)
-    gray_image = TF.rgb_to_grayscale(image)
-    return gray_image
-
 def rnn(input_size, rnn_size, rnn_len):
     num_rnn_layers = rnn_len
     assert num_rnn_layers >= 1
@@ -51,12 +43,12 @@ class SquashedActorMobileNetV3(TorchActorModule):
     def __init__(self, observation_space, action_space, rnn_size=100, rnn_len=2, mlp_sizes=(100, 100), activation=nn.ReLU):
         super().__init__(observation_space, action_space)
         self.mobilenet = mobilenetv3_large()
-        self.mobilenet.eval()
-
         dim_obs = sum(prod(s for s in space.shape) for space in observation_space)
+        # tm = observation_space.spaces
+        dim_obs=dim_obs-prod(observation_space.spaces[3].shape)+self.mobilenet.num_classes
         dim_act = action_space.shape[0]
         self.rnn = rnn(dim_obs, rnn_size, rnn_len)
-        self.mlp = mlp([rnn_size + dim_act] + list(mlp_sizes) + [1], activation)
+        self.mlp = mlp([rnn_size + dim_act-3] + list(mlp_sizes) + [100], activation)
         self.mu_layer = nn.Linear(mlp_sizes[-1], dim_act)
         self.log_std_layer = nn.Linear(mlp_sizes[-1], dim_act)
         self.act_limit = action_space.high[0]
@@ -66,40 +58,44 @@ class SquashedActorMobileNetV3(TorchActorModule):
         self.h = None
         self.rnn_size = rnn_size
         self.rnn_len = rnn_len
-        self.conv1x1_weights = nn.Parameter(torch.randn(1, rnn_size, 1, 1))
+        self.conv1x1_weights = nn.Parameter(torch.randn(rnn_size, 1, 1))
 
+
+
+    def conv1x1(self, x):
+        return F.conv1d(x, self.conv1x1_weights)
 
     def forward(self, obs_seq, test=False, with_logprob=True, save_hidden=False):
         self.rnn.flatten_parameters()
         batch_size = obs_seq[0].shape[0]
+        tmp = obs_seq[3][0][0]
+        x = tmp.permute(0, 3, 1, 2)
+        output = self.mobilenet(x)
+        observation = list(obs_seq)
+        observation[3] = output.unsqueeze(0)
+
 
         if not save_hidden or self.h is None:
-            device = obs_seq[0].device
+            device = observation[0].device
             h = torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device)
         else:
             h = self.h
 
         # Reshape tensors in obs_seq to have 3 dimensions (sequence_len, batch_size, features)
-        obs_seq_resized = [preprocess_image(o.view(o.shape[0], o.shape[1], o.shape[2], -1), target_channels=1) for o in
-                           obs_seq]
+
 
         # Pack the tensors in obs_seq_resized to handle variable sequence lengths
-        obs_seq_packed = nn.utils.rnn.pack_sequence(obs_seq_resized)
+        obs_seq_cat = torch.cat(observation, -1)
 
         # Pass the packed sequence through the GRU
-        net_out, h = self.rnn(obs_seq_packed, h)
-
-        # Unpack the packed output of the GRU
-        net_out, _ = nn.utils.rnn.pad_packed_sequence(net_out)
+        net_out, h = self.rnn(obs_seq_cat, h)
 
         # Get the last step output of the GRU
-        net_out = net_out[-1]
+        net_out = net_out[:, -1]
 
-        # Adjust the output shape of the MobileNetV3 network to match the expected input shape for the GRU
-        # Apply 1x1 convolution to reduce the features dimension to rnn_size
-        net_out = self.conv1x1(net_out)
+        # Process the output from MobileNetV3
 
-        net_out = self.mlp(net_out)
+        net_out = self.mlp(net_out)  # =====================  tu jest błąd
         mu = self.mu_layer(net_out)
         log_std = self.log_std_layer(net_out)
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
@@ -133,10 +129,7 @@ class SquashedActorMobileNetV3(TorchActorModule):
         obs_seq = tuple(o.view(1, *o.shape) for o in obs)  # artificially add sequence dimension
         with torch.no_grad():
             a, _ = self.forward(obs_seq=obs_seq, test=test, with_logprob=False, save_hidden=True)
-            if torch.cuda.is_available():
-                return a.gpu().numpy()
-            else:
-                return a.cpu().numpy()
+            return a.cpu().numpy()
 
 class MobileNetQFunction(nn.Module):
     def __init__(self, obs_space, act_space, rnn_size=100, rnn_len=2, mlp_sizes=(100, 100), activation=nn.ReLU):
@@ -152,22 +145,25 @@ class MobileNetQFunction(nn.Module):
     def forward(self, obs_seq, act, save_hidden=False):
         self.rnn.flatten_parameters()
         batch_size = obs_seq[0].shape[0]
+        tmp = obs_seq[3][0][0]
+        x = tmp.permute(0, 3, 1, 2)
+        output = self.mobilenet(x)
+        dupa = list(obs_seq)
+        dupa[3] = output.unsqueeze(0)
 
         if not save_hidden or self.h is None:
-            device = obs_seq[0].device
+            device = dupa[0].device
             h = torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device)
         else:
             h = self.h
 
-        # Reshape tensors in obs_seq to have 3 dimensions (sequence_len, batch_size, features)
-        obs_seq_resized = [preprocess_image(o.view(o.shape[0], o.shape[1], o.shape[2], -1), target_channels=1) for o in
-                           obs_seq]
+
 
         # Use adaptive_avg_pool2d to resize the tensors to a fixed size
-        max_dim2_size = max(o.shape[2] for o in obs_seq_resized)
-        max_dim3_size = max(o.shape[3] for o in obs_seq_resized)
+        max_dim2_size = max(o.shape[2] for o in dupa)
+        max_dim3_size = max(o.shape[3] for o in dupa)
         obs_seq_resized = [
-            F.adaptive_avg_pool2d(o, output_size=(max_dim2_size, max_dim3_size)) for o in obs_seq_resized
+            F.adaptive_avg_pool2d(o, output_size=(max_dim2_size, max_dim3_size)) for o in dupa
         ]
 
         # Transpose the tensors in obs_seq_resized to have the shape (sequence_len, batch_size, features)
