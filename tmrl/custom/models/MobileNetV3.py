@@ -4,7 +4,7 @@ import math
 
 __all__ = ['mobilenetv3_large', 'mobilenetv3_small']
 
-
+# XD
 def _make_divisible(v, divisor, min_value=None):
     """
     This function is taken from the original tf repo.
