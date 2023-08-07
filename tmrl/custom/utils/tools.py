@@ -1,10 +1,8 @@
 # standard library imports
 import math
-import os
 import socket
 import struct
 import time
-from pathlib import Path
 from threading import Lock, Thread
 
 # third-party imports
@@ -18,11 +16,12 @@ from config.config_constants import LIDAR_BLACK_THRESHOLD
 class TM2020OpenPlanetClient:
     # 25 floats instead of 11 to accommodate for yaw, pitch, and roll and camera position and other stuff.
     # Script attributes:
-    def __init__(self, host='127.0.0.1', port=9000, struct_str='<' + 'f' * 25):
+    def __init__(self, host='127.0.0.1', port=9000, struct_str='<' + 'f' * 40):
         self._struct_str = struct_str
         self.nb_floats = self._struct_str.count('f')
+        self.nb_int32 = self._struct_str.count('i')
         self.nb_uint64 = self._struct_str.count('Q')
-        self._nb_bytes = self.nb_floats * 4 + self.nb_uint64 * 8
+        self._nb_bytes = self.nb_floats * 4 + self.nb_uint64 * 8 + self.nb_int32 * 4
 
         self._host = host
         self._port = port
@@ -39,6 +38,8 @@ class TM2020OpenPlanetClient:
         This listens for incoming data until the object is destroyed
         TODO: handle disconnection
         """
+        # while True:
+        #    try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self._host, self._port))
             data_raw = b''
@@ -51,6 +52,17 @@ class TM2020OpenPlanetClient:
                 self.__lock.acquire()
                 self.__data = data_used
                 self.__lock.release()
+        # except socket.error as e:
+        # if e.errno == errno.ECONNREFUSED:
+        #     print("Connection refused by the server. Make sure the server is running.")
+        # else:
+        #     print(f"Error occurred: {e}")
+        # # Optionally, you can add more specific error handling here based on different errno values.
+        # # For example, if you encounter errno.ECONNRESET, it indicates the server closed the connection.
+        #
+        # # Wait for a few seconds before attempting to reconnect
+        # print("Attempting to reconnect...")
+        # time.sleep(5)
 
     def retrieve_data(self, sleep_if_empty=0.01, timeout=10.0):
         """
@@ -60,6 +72,7 @@ class TM2020OpenPlanetClient:
         """
         c = True
         t_start = None
+        data = None
         while c:
             self.__lock.acquire()
             if self.__data is not None:

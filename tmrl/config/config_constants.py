@@ -3,8 +3,7 @@ import os
 from pathlib import Path
 import logging
 import json
-
-
+logging.basicConfig(level=logging.INFO)
 TMRL_FOLDER = Path.home() / "TmrlData"
 CHECKPOINTS_FOLDER = TMRL_FOLDER / "checkpoints"
 DATASET_FOLDER = TMRL_FOLDER / "dataset"
@@ -17,8 +16,10 @@ with open(CONFIG_FILE) as f:
     TMRL_CONFIG = json.load(f)
 
 RUN_NAME = TMRL_CONFIG["RUN_NAME"]  # "SACv1_SPINUP_4_LIDAR_pretrained_test_9"
-BUFFERS_MAXLEN = TMRL_CONFIG["BUFFERS_MAXLEN"]  # Maximum length of the local buffers for RolloutWorkers, Server and TrainerInterface
-RW_MAX_SAMPLES_PER_EPISODE = TMRL_CONFIG["RW_MAX_SAMPLES_PER_EPISODE"]  # If this number of timesteps is reached, the RolloutWorker will reset the episode
+BUFFERS_MAXLEN = TMRL_CONFIG[
+    "BUFFERS_MAXLEN"]  # Maximum length of the local buffers for RolloutWorkers, Server and TrainerInterface
+RW_MAX_SAMPLES_PER_EPISODE = TMRL_CONFIG[
+    "RW_MAX_SAMPLES_PER_EPISODE"]  # If this number of timesteps is reached, the RolloutWorker will reset the episode
 
 PRAGMA_RNN = False  # True to use an RNN, False to use an MLP
 
@@ -37,10 +38,11 @@ SERVER_IP_FOR_TRAINER = PUBLIC_IP_SERVER if not LOCALHOST_TRAINER else "127.0.0.
 # ENVIRONMENT: =======================================================
 
 ENV_CONFIG = TMRL_CONFIG["ENV"]
-RTGYM_INTERFACE = ENV_CONFIG["RTGYM_INTERFACE"]
+RTGYM_INTERFACE = str(ENV_CONFIG["RTGYM_INTERFACE"]).upper()
 PRAGMA_LIDAR = RTGYM_INTERFACE.endswith("LIDAR")  # True if Lidar, False if images
 PRAGMA_PROGRESS = RTGYM_INTERFACE.endswith("LIDARPROGRESS")
 PRAGMA_TRACKMAP = RTGYM_INTERFACE.endswith("TRACKMAP")
+PRAGMA_CUSTOM = RTGYM_INTERFACE.endswith("CUSTOM")
 if PRAGMA_PROGRESS or PRAGMA_TRACKMAP:
     PRAGMA_LIDAR = True
 LIDAR_BLACK_THRESHOLD = [55, 55, 55]  # [88, 88, 88] for tiny road, [55, 55, 55] FOR BASIC ROAD
@@ -56,8 +58,9 @@ IMG_WIDTH = ENV_CONFIG["IMG_WIDTH"] if "IMG_WIDTH" in ENV_CONFIG else 64
 IMG_HEIGHT = ENV_CONFIG["IMG_HEIGHT"] if "IMG_HEIGHT" in ENV_CONFIG else 64
 
 # DEBUGGING AND BENCHMARKING: ===================================
-
-CRC_DEBUG = False  # Only for checking the consistency of the custom networking methods, set it to False otherwise. Caution: difficult to handle if reset transitions are collected.
+# Only for checking the consistency of the custom networking methods, set it to False otherwise.
+# Caution: difficult to handle if reset transitions are collected.
+CRC_DEBUG = False
 CRC_DEBUG_SAMPLES = 100  # Number of samples collected in CRC_DEBUG mode
 PROFILE_TRAINER = False  # Will profile each epoch in the Trainer when True
 SYNCHRONIZE_CUDA = False  # Set to True for profiling, False otherwise
@@ -68,7 +71,8 @@ DEBUG_MODE = TMRL_CONFIG["DEBUG_MODE"] if "DEBUG_MODE" in TMRL_CONFIG.keys() els
 PATH_DATA = TMRL_FOLDER
 logging.debug(f" PATH_DATA:{PATH_DATA}")
 
-MODEL_HISTORY = TMRL_CONFIG["SAVE_MODEL_EVERY"]  # 0 for not saving history, x for saving model history every x new model received by RolloutWorker
+# 0 for not saving history, x for saving model history every x new model received by RolloutWorker
+MODEL_HISTORY = TMRL_CONFIG["SAVE_MODEL_EVERY"]
 
 MODEL_PATH_WORKER = str(WEIGHTS_FOLDER / (RUN_NAME + ".tmod"))
 MODEL_PATH_SAVE_HISTORY = str(WEIGHTS_FOLDER / (RUN_NAME + "_"))
@@ -97,9 +101,11 @@ LOCAL_PORT_TRAINER = TMRL_CONFIG["LOCAL_PORT_TRAINER"]
 LOCAL_PORT_WORKER = TMRL_CONFIG["LOCAL_PORT_WORKER"]
 PASSWORD = TMRL_CONFIG["PASSWORD"]
 SECURITY = "TLS" if TMRL_CONFIG["TLS"] else None
-CREDENTIALS_DIRECTORY = TMRL_CONFIG["TLS_CREDENTIALS_DIRECTORY"] if TMRL_CONFIG["TLS_CREDENTIALS_DIRECTORY"] != "" else None
+CREDENTIALS_DIRECTORY = TMRL_CONFIG["TLS_CREDENTIALS_DIRECTORY"] if TMRL_CONFIG[
+                                                                        "TLS_CREDENTIALS_DIRECTORY"] != "" else None
 HOSTNAME = TMRL_CONFIG["TLS_HOSTNAME"]
 NB_WORKERS = None if TMRL_CONFIG["NB_WORKERS"] < 0 else TMRL_CONFIG["NB_WORKERS"]
 
-BUFFER_SIZE = TMRL_CONFIG["BUFFER_SIZE"]  # 268435456  # socket buffer size (200 000 000 is large enough for 1000 images right now)
+BUFFER_SIZE = TMRL_CONFIG[
+    "BUFFER_SIZE"]  # 268  435 456  # socket buffer size (200 000 000 is large enough for 1000 images right now)
 HEADER_SIZE = TMRL_CONFIG["HEADER_SIZE"]  # fixed number of characters used to describe the data length

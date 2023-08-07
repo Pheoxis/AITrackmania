@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from random import randint
 import logging
+logging.basicConfig(level=logging.INFO)
 
 # third-party imports
 import numpy as np
@@ -82,6 +83,7 @@ class Memory(ABC):
 
         if len(self) > self.memory_size:
             # TODO: crop to memory_size
+            # self.data = self.data[-self.memory_size:]
             logging.warning(f"the dataset length ({len(self)}) is longer than memory_size ({self.memory_size})")
 
     def __iter__(self):

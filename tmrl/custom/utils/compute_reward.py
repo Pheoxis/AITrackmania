@@ -5,7 +5,7 @@ import pickle
 # third-party imports
 import numpy as np
 import logging
-
+logging.basicConfig(level=logging.INFO)
 
 class RewardFunction:
     """

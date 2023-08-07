@@ -12,10 +12,14 @@ class AffineObservationWrapper(gymnasium.ObservationWrapper):
         assert isinstance(env.observation_space, gymnasium.spaces.Box)
         self.shift = shift
         self.scale = scale
-        self.observation_space = gymnasium.spaces.Box(self.observation(env.observation_space.low), self.observation(env.observation_space.high), dtype=env.observation_space.dtype)
+        self.observation_space = gymnasium.spaces.Box(
+                                                         self.observation(env.observation_space.low),
+                                                         self.observation(env.observation_space.high),
+                                                         dtype=env.observation_space.dtype
+                                                     )
 
-    def observation(self, obs):
-        return (obs + self.shift) * self.scale
+    def observation(self, observation):
+        return (observation + self.shift) * self.scale
 
 
 class Float64ToFloat32(gymnasium.ObservationWrapper):
@@ -30,8 +34,8 @@ class Float64ToFloat32(gymnasium.ObservationWrapper):
         return observation
 
     def step(self, action):
-        s, r, d, t, info = super().step(action)
-        return s, r, d, t, info
+        observation, reward, done, terminated, info = super().step(action)
+        return observation, reward, done, terminated, info
 
 
 # === Utilities ========================================================================================================

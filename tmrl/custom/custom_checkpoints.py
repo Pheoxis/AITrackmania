@@ -1,4 +1,5 @@
 import os
+import sys
 import tarfile
 from pathlib import Path
 import itertools
@@ -10,6 +11,8 @@ import torch
 from config import config_constants as cfg
 from util import dump, load
 import logging
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 
 def load_run_instance_images_dataset(checkpoint_path):
@@ -110,7 +113,9 @@ def update_run_instance(run_instance, training_cls):
             if run_instance.agent.lr_critic != lr_critic:
                 old = run_instance.agent.lr_critic
                 run_instance.agent.lr_critic = lr_critic
-                run_instance.agent.q_optimizer = Adam(itertools.chain(run_instance.agent.model.q1.parameters(), run_instance.agent.model.q2.parameters()), lr=lr_critic)
+                run_instance.agent.q_optimizer = Adam(
+                    itertools.chain(run_instance.agent.model.q1.parameters(), run_instance.agent.model.q2.parameters()),
+                    lr=lr_critic)
                 logging.info(f"Critic optimizer reinitialized with new lr: {lr_critic} (old lr: {old}).")
 
         if run_instance.agent.learn_entropy_coef != learn_entropy_coef:
@@ -121,13 +126,14 @@ def update_run_instance(run_instance, training_cls):
             run_instance.agent.alpha = alpha
             device = run_instance.device or ("cuda" if torch.cuda.is_available() else "cpu")
             if run_instance.agent.learn_entropy_coef:
-                run_instance.agent.log_alpha = torch.log(torch.ones(1) * run_instance.agent.alpha).to(device).requires_grad_(True)
+                run_instance.agent.log_alpha = torch.log(torch.ones(1) * run_instance.agent.alpha).to(
+                    device).requires_grad_(True)
                 run_instance.agent.alpha_optimizer = Adam([run_instance.agent.log_alpha], lr=lr_entropy)
                 logging.info(f"Entropy optimizer reinitialized.")
             else:
                 run_instance.agent.alpha_t = torch.tensor(float(run_instance.agent.alpha)).to(device)
                 logging.info(f"Alpha changed to {alpha}.")
-        
+
         if run_instance.agent.gamma != gamma:
             old = run_instance.agent.gamma
             run_instance.agent.gamma = gamma

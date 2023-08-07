@@ -9,25 +9,26 @@ from custom.interfaces.TM2020Interface import TM2020Interface
 from custom.interfaces.TM2020InterfaceLidar import TM2020InterfaceLidar
 from custom.interfaces.TM2020InterfaceLidarProgress import TM2020InterfaceLidarProgress
 from custom.interfaces.TM2020InterfaceTrackMap import TM2020InterfaceTrackMap
+from custom.interfaces.TM2020InterfaceCustom import TM2020InterfaceCustom
 from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
 from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
 from custom.models.VanillaColorCNNActorCritic import VanillaColorCNNActorCritic, SquashedGaussianVanillaColorCNNActor
 from training_offline import TorchTrainingOffline
-from custom.custom_memories import MemoryTMFull, MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs
-from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs,obs_preprocessor_tm_lidar_progress_act_in_obs
+from custom.custom_memories import MemoryTMFull, MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, \
+    get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs
+from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
+    obs_preprocessor_tm_lidar_progress_act_in_obs
 from envs import GenericGymEnv
 from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
 from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
 from custom.custom_checkpoints import update_run_instance
 from util import partial
 
-
 ALG_CONFIG = cfg.TMRL_CONFIG["ALG"]
 ALG_NAME = ALG_CONFIG["ALGORITHM"]
 assert ALG_NAME in ["SAC", "REDQSAC"], f"If you wish to implement {ALG_NAME}, do not use 'ALG' in config.json for that."
-
 
 # MODEL, GYM ENVIRONMENT, REPLAY MEMORY AND TRAINING: ===========
 
@@ -53,11 +54,14 @@ if cfg.PRAGMA_LIDAR:
     else:
         INT = partial(TM2020InterfaceLidar, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
 else:
-    INT = partial(TM2020Interface,
-                  img_hist_len=cfg.IMG_HIST_LEN,
-                  gamepad=cfg.PRAGMA_GAMEPAD,
-                  grayscale=cfg.GRAYSCALE,
-                  resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT))
+    if cfg.PRAGMA_CUSTOM:
+        INT = partial(TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
+    else:
+        INT = partial(TM2020Interface,
+                      img_hist_len=cfg.IMG_HIST_LEN,
+                      gamepad=cfg.PRAGMA_GAMEPAD,
+                      grayscale=cfg.GRAYSCALE,
+                      resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT))
 
 CONFIG_DICT = rtgym.DEFAULT_CONFIG_DICT.copy()
 CONFIG_DICT["interface"] = INT
@@ -141,6 +145,7 @@ else:
         q_updates_per_policy_update=ALG_CONFIG["REDQ_Q_UPDATES_PER_POLICY_UPDATE"]
     )
 
+
 # TRAINER: =====================================================
 
 
@@ -168,7 +173,8 @@ if cfg.PRAGMA_LIDAR:  # lidar
         profiling=cfg.PROFILE_TRAINER,
         training_agent_cls=AGENT,
         agent_scheduler=None,  # sac_v2_entropy_scheduler
-        start_training=cfg.TMRL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"])  # set this > 0 to start from an existing policy (fills the buffer up to this number of samples before starting training)
+        start_training=cfg.TMRL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"])  # set this > 0 to start from an existing
+    # policy (fills the buffer up to this number of samples before starting training)
 else:  # images
     TRAINER = partial(
         TorchTrainingOffline,

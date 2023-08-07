@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import logging
 import torch
-
+logging.basicConfig(level=logging.INFO)
 T = TypeVar('T')  # helps with type inference in some editors
 
 
