@@ -120,7 +120,7 @@ class TM2020Interface(RealTimeGymInterface):
         else:
             img = img[:, :, ::-1]  # reversed view for numpy RGB convention
         data = self.client.retrieve_data()
-        # print(f"data: {data}")
+        print(f"data: {data}")
         self.img = img  # for render()
         return data, img
 

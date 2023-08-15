@@ -1,9 +1,9 @@
+import cv2
 import numpy as np
 from gymnasium import spaces
 
 from custom.interfaces.TM2020Interface import TM2020Interface
 from custom.utils.control_mouse import mouse_save_replay_tm20
-from custom.utils.tools import TM2020OpenPlanetClient
 
 import config.config_constants as cfg
 
@@ -18,7 +18,6 @@ class TM2020InterfaceCustom(TM2020Interface):
         self.record = record
         self.window_interface = None
         self.crash_penalty = crash_penalty
-        self.client = TM2020OpenPlanetClient()
 
     def get_observation_space(self):
         # https://gymnasium.farama.org/api/spaces/
@@ -43,11 +42,11 @@ class TM2020InterfaceCustom(TM2020Interface):
         aim_yaw = spaces.Box(low=-4.0, high=4.0, shape=(1,))
         aim_pitch = spaces.Box(low=-1.0, high=1.0, shape=(1,))
 
-        steer_angle = spaces.Box(low=-1000.0, high=1000.0, shape=(4,))  # fl, fr, rl, rr
+        steer_angle = spaces.Box(low=-1000.0, high=1000.0, shape=(2,))  # fl, fr
 
-        wheel_rot = spaces.Box(low=0.0, high=1700.0, shape=(4,))  # fl, fr, rl, rr
+        wheel_rot = spaces.Box(low=0.0, high=1700.0, shape=(2,))  # fl, fr
 
-        wheel_rot_speed = spaces.Box(low=-1000.0, high=1000.0, shape=(4,))  # fl, fr, rl, rr
+        wheel_rot_speed = spaces.Box(low=-1000.0, high=1000.0, shape=(2,))  # fl, fr
 
         damper_len = spaces.Box(low=0.0, high=0.1, shape=(4,))  # fl, fr, rl, rr
 
@@ -68,15 +67,6 @@ class TM2020InterfaceCustom(TM2020Interface):
 
         failure_counter = spaces.Box(low=0.0, high=15, shape=(1,))
 
-        # input_brake = spaces.Discrete(2)
-        # crashed = spaces.Discrete(2)
-        #
-        # reactor_ground_mode = spaces.Discrete(2)
-        # ground_contact = spaces.Discrete(2)
-        #
-        # gear = spaces.Discrete(7)
-        # surface_id = spaces.MultiDiscrete([23 for _ in range(4)])  # fl, fr, rl, rr
-
         if self.resize_to is not None:
             w, h = self.resize_to
         else:
@@ -88,93 +78,45 @@ class TM2020InterfaceCustom(TM2020Interface):
 
         return spaces.Tuple(
             (
-                speed, gear, rpm,
-                acceleration, jerk,
+                speed,
                 race_progress,
                 input_steer, input_gas_pedal, input_brake,
+                acceleration, jerk,
+                rpm,
                 aim_yaw, aim_pitch,
-                surface_id, steer_angle, wheel_rot, wheel_rot_speed, damper_len, slip_coef,
-                reactor_ground_mode, ground_contact, reactor_air_control, ground_dist,
-                crashed, failure_counter,
+                steer_angle,
+                wheel_rot,
+                wheel_rot_speed,
+                damper_len,
+                slip_coef,
+                reactor_air_control,
+                ground_dist,
+                crashed,
+                reactor_ground_mode,
+                ground_contact,
+                gear,
+                surface_id,
+                failure_counter,
                 img
             )
         )
-        # region code
-        # speed = spaces.Box(low=0.0, high=1000.0, shape=(1,))
-        # acceleration = spaces.Box(low=-100.0, high=100.0, shape=(1,))
-        # jerk = spaces.Box(low=-10.0, high=10.0, shape=(1,))
-        # race_progress = spaces.Box(low=0.0, high=110.0, shape=(1,))
-        # position_x = spaces.Box(low=0.0, high=110.0, shape=(1,))
-        # position_y = spaces.Box(low=0.0, high=110.0, shape=(1,))
-        # position_z = spaces.Box(low=0.0, high=110.0, shape=(1,))
-        #
-        # input_gas_pedal = spaces.Box(low=0.0, high=1.0, shape=(1,))
-        # input_is_braking = spaces.Box(low=0.0, high=1.0, shape=(1,))
-        #
-        # gear = spaces.Box(low=0.0, high=6, shape=(1,))
-        # rpm = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        #
-        # aim_yaw = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        # aim_pitch = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        #
-        # fl_surface_id = spaces.Box(low=0.0, high=23.0, shape=(1,))
-        # fl_steer_angle = spaces.Box(low=-1.0, high=1.0, shape=(1,))
-        # fl_wheel_rot = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        # fl_wheel_rot_speed = spaces.Box(low=0.0, high=1000.0, shape=(1,))
-        # fl_damper_len = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        # fl_slip_coef = spaces.Box(low=0.0, high=1.0, shape=(1,))
-        #
-        # fr_surface_id = spaces.Box(low=0.0, high=23.0, shape=(1,))
-        # fr_steer_angle = spaces.Box(low=-1.0, high=1.0, shape=(1,))
-        # fr_wheel_rot = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        # fr_wheel_rot_speed = spaces.Box(low=0.0, high=1000.0, shape=(1,))
-        # fr_damper_len = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        # fr_slip_coef = spaces.Box(low=0.0, high=1.0, shape=(1,))
-        #
-        # rl_surface_id = spaces.Box(low=0.0, high=23.0, shape=(1,))
-        # rl_steer_angle = spaces.Box(low=-1.0, high=1.0, shape=(1,))
-        # rl_wheel_rot = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        # rl_wheel_rot_speed = spaces.Box(low=0.0, high=1000.0, shape=(1,))
-        # rl_damper_len = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        # rl_slip_coef = spaces.Box(low=0.0, high=1.0, shape=(1,))
-        #
-        # rr_surface_id = spaces.Box(low=0.0, high=23.0, shape=(1,))
-        # rr_steer_angle = spaces.Box(low=-1.0, high=1.0, shape=(1,))
-        # rr_wheel_rot = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        # rr_wheel_rot_speed = spaces.Box(low=0.0, high=1000.0, shape=(1,))
-        # rr_damper_len = spaces.Box(low=0.0, high=np.inf, shape=(1,))
-        # rr_slip_coef = spaces.Box(low=0.0, high=1.0, shape=(1,))
-        #
-        # reactor_ground_mode = spaces.Box(low=0, high=1, shape=(1,))
-        # ground_contact = spaces.Box(low=0, high=1, shape=(1,))
-        #
-        # reactor_air_control_x = spaces.Box(low=0.0, high=110.0, shape=(1,))
-        # reactor_air_control_y = spaces.Box(low=0.0, high=110.0, shape=(1,))
-        # reactor_air_control_z = spaces.Box(low=0.0, high=110.0, shape=(1,))
-        #
-        # ground_dist = spaces.Box(low=0.0, high=110.0, shape=(1,))
-        # crash = spaces.Box(low=0.0, high=1, shape=(1,))
 
-        # return spaces.Tuple(
-        #     (
-        #         speed, acceleration, jerk,
-        #         race_progress,
-        #         position_x, position_y, position_z,
-        #         input_gas_pedal, input_is_braking,
-        #         gear, rpm,
-        #         aim_yaw, aim_pitch,
-        #         fl_surface_id, fl_steer_angle, fl_wheel_rot, fl_wheel_rot_speed, fl_damper_len, fl_slip_coef,
-        #         fr_surface_id, fr_steer_angle, fr_wheel_rot, fr_wheel_rot_speed, fr_damper_len, fr_slip_coef,
-        #         rl_surface_id, rl_steer_angle, rl_wheel_rot, rl_wheel_rot_speed, rl_damper_len, rl_slip_coef,
-        #         rr_surface_id, rr_steer_angle, rr_wheel_rot, rr_wheel_rot_speed, rr_damper_len, rr_slip_coef,
-        #         reactor_ground_mode,
-        #         ground_contact,
-        #         reactor_air_control_x, reactor_air_control_y, reactor_air_control_z,
-        #         ground_dist,
-        #         crash
-        #     )
-        # )
-        # endregion code
+    def grab_data_and_img(self):
+        img = self.window_interface.screenshot()[:, :, :3]  # BGR ordering
+        if self.resize_to is not None:  # cv2.resize takes dim as (width, height)
+            img = cv2.resize(img, self.resize_to)
+        if self.grayscale:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        else:
+            img = img[:, :, ::-1]  # reversed view for numpy RGB convention
+        data = self.grab_data()
+        # print(f"data: {data}")
+        self.img = img  # for render()
+        return data, img
+
+    def grab_data(self):
+        data = self.client.retrieve_data()
+        return data
 
     def get_obs_rew_terminated_info(self):
         """
@@ -248,6 +190,9 @@ class TM2020InterfaceCustom(TM2020Interface):
             crashed, failure_counter,
             imgs
         ]
+
+        if len(observation) < 23:
+            print(observation)
 
         reward += self.constant_penalty
         reward = np.float32(reward)

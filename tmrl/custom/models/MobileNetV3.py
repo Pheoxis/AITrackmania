@@ -4,7 +4,7 @@ import math
 
 __all__ = ['mobilenetv3_large', 'mobilenetv3_small']
 
-# XD
+
 def _make_divisible(v, divisor, min_value=None):
     """
     This function is taken from the original tf repo.
@@ -124,7 +124,7 @@ class MobileNetV3(nn.Module):
     def __init__(self, cfgs, mode, num_classes=1, width_mult=1.):
         super(MobileNetV3, self).__init__()
         # setting of inverted residual blocks
-        self.num_classes=num_classes
+        self.num_classes = num_classes
         self.cfgs = cfgs
         assert mode in ['large', 'small']
 
