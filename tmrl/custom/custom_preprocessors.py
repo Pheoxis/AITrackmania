@@ -31,6 +31,10 @@ def obs_preprocessor_tm_lidar_progress_act_in_obs(obs):
     return obs
 
 
+def obs_preprocessor_mobilenet_act_in_obs(obs):
+    return obs
+
+
 # SAMPLE PREPROCESSING =======================================
 # these can be called when sampling from the replay memory, on the whole sample
 # this is useful in particular for data augmentation

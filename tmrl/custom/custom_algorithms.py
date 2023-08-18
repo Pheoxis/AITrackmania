@@ -151,7 +151,7 @@ class REDQSACAgent(TrainingAgent):
         return ret_dict
 
 
-# REDQ-SAC =============================================================================================================
+# SAC with optional learnable entropy coefficent =======================================================================
 
 @dataclass(eq=False)
 class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup

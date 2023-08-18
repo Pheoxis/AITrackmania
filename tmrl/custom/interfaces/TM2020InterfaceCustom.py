@@ -72,9 +72,9 @@ class TM2020InterfaceCustom(TM2020Interface):
         else:
             w, h = cfg.WINDOW_HEIGHT, cfg.WINDOW_WIDTH
         if self.grayscale:
-            img = spaces.Box(low=0.0, high=255.0, shape=(self.img_hist_len, h, w))  # cv2 grayscale images are (h, w)
+            img = spaces.Box(low=0.0, high=255.0, shape=(h, w))  # cv2 grayscale images are (h, w)
         else:
-            img = spaces.Box(low=0.0, high=255.0, shape=(self.img_hist_len, h, w, 3))  # cv2 images are (h, w, c)
+            img = spaces.Box(low=0.0, high=255.0, shape=(h, w, 3))  # cv2 images are (h, w, c)
 
         return spaces.Tuple(
             (
@@ -87,15 +87,15 @@ class TM2020InterfaceCustom(TM2020Interface):
                 steer_angle,
                 wheel_rot,
                 wheel_rot_speed,
-                damper_len,
-                slip_coef,
-                reactor_air_control,
+                damper_len,  # 4
+                slip_coef,  # 4
+                reactor_air_control,  # 3
                 ground_dist,
                 crashed,
                 reactor_ground_mode,
                 ground_contact,
                 gear,
-                surface_id,
+                surface_id,  # 4
                 failure_counter,
                 img
             )
@@ -140,12 +140,12 @@ class TM2020InterfaceCustom(TM2020Interface):
         aim_yaw = np.array([data[10]], dtype='float32')
         aim_pitch = np.array([data[11]], dtype='float32')
 
-        steer_angle = np.array([data[12:13]], dtype='float32')
-        wheel_rot = np.array([data[14:15]], dtype='float32')
-        wheel_rot_speed = np.array([data[16:17]], dtype='float32')
-        damper_len = np.array([data[18:21]], dtype='float32')
-        slip_coef = np.array([data[22:25]], dtype='float32')
-        reactor_air_control = np.array([data[26:28]], dtype='float32')
+        steer_angle = np.array([data[12:14]], dtype='float32')
+        wheel_rot = np.array([data[14:16]], dtype='float32')
+        wheel_rot_speed = np.array([data[16:18]], dtype='float32')
+        damper_len = np.array([data[18:22]], dtype='float32')
+        slip_coef = np.array([data[22:26]], dtype='float32')
+        reactor_air_control = np.array([data[26:29]], dtype='float32')
         ground_dist = np.array([data[29]], dtype='float32')
 
         input_brake = np.array([data[31]], dtype='float32')
@@ -154,7 +154,7 @@ class TM2020InterfaceCustom(TM2020Interface):
 
         gear = np.array([data[35]], dtype='float32')
 
-        surface_id = np.array([data[36:39]], dtype='float32')
+        surface_id = np.array([data[36:40]], dtype='float32')
 
         crashed = np.array([data[32]], dtype='float32')
         end_of_track = bool(data[30])
@@ -176,8 +176,7 @@ class TM2020InterfaceCustom(TM2020Interface):
             reward += rew
 
         failure_counter = float(failure_counter)
-        self.img_hist.append(img)
-        imgs = np.array(list(self.img_hist))
+        img = np.array(img)
 
         observation = [
             speed, acceleration, jerk,
@@ -188,11 +187,8 @@ class TM2020InterfaceCustom(TM2020Interface):
             surface_id, steer_angle, wheel_rot, wheel_rot_speed, damper_len, slip_coef,
             reactor_ground_mode, ground_contact, reactor_air_control, ground_dist,
             crashed, failure_counter,
-            imgs
+            img
         ]
-
-        if len(observation) < 23:
-            print(observation)
 
         reward += self.constant_penalty
         reward = np.float32(reward)
@@ -219,12 +215,12 @@ class TM2020InterfaceCustom(TM2020Interface):
         aim_yaw = np.array([data[10]], dtype='float32')
         aim_pitch = np.array([data[11]], dtype='float32')
 
-        steer_angle = np.array([data[12:13]], dtype='float32')
-        wheel_rot = np.array([data[14:15]], dtype='float32')
-        wheel_rot_speed = np.array([data[16:17]], dtype='float32')
-        damper_len = np.array([data[18:21]], dtype='float32')
-        slip_coef = np.array([data[22:25]], dtype='float32')
-        reactor_air_control = np.array([data[26:28]], dtype='float32')
+        steer_angle = np.array([data[12:14]], dtype='float32')
+        wheel_rot = np.array([data[14:16]], dtype='float32')
+        wheel_rot_speed = np.array([data[16:18]], dtype='float32')
+        damper_len = np.array([data[18:22]], dtype='float32')
+        slip_coef = np.array([data[22:26]], dtype='float32')
+        reactor_air_control = np.array([data[26:29]], dtype='float32')
         ground_dist = np.array([data[29]], dtype='float32')
 
         input_brake = np.array([data[31]], dtype='float32')
@@ -233,15 +229,13 @@ class TM2020InterfaceCustom(TM2020Interface):
 
         gear = np.array([data[35]], dtype='float32')
 
-        surface_id = np.array([data[36:39]], dtype='float32')
+        surface_id = np.array([data[36:40]], dtype='float32')
 
         crashed = np.array(data[32], dtype='float32')
 
         failure_counter = 0.0
 
-        for _ in range(self.img_hist_len):
-            self.img_hist.append(img)
-        imgs = np.array(list(self.img_hist))
+        img = np.array(img)
 
         observation = [
             speed, acceleration, jerk,
@@ -252,7 +246,7 @@ class TM2020InterfaceCustom(TM2020Interface):
             surface_id, steer_angle, wheel_rot, wheel_rot_speed, damper_len, slip_coef,
             reactor_ground_mode, ground_contact, reactor_air_control, ground_dist,
             crashed, failure_counter,
-            imgs
+            img
         ]
 
         self.reward_function.reset()
