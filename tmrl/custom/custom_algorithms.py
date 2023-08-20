@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from torch.nn import Module, Linear
 from torch.nn.functional import relu, logsigmoid
 from torch.distributions import Distribution, Normal
+import torch.optim as optim
+from models.RNNActorCritic import SquashedGaussianRNNActor
 
 # third-party imports
 import numpy as np
@@ -392,16 +394,16 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
 class TQCAgent(TrainingAgent):
     observation_space: type
     action_space: type
-    device: str = None  # device where the model will live (None for auto)
+    device: str = None
     model_cls: type = MLPActorCritic
     gamma: float = 0.99
     polyak: float = 0.995
-    alpha: float = 0.2  # fixed (v1) or initial (v2) value of the entropy coefficient
-    lr_actor: float = 1e-3  # learning rate
-    lr_critic: float = 1e-3  # learning rate
-    lr_entropy: float = 1e-3  # entropy autotuning
+    alpha: float = 0.2
+    lr_actor: float = 1e-3
+    lr_critic: float = 1e-3
+    lr_entropy: float = 1e-3
     learn_entropy_coef: bool = True
-    target_entropy: float = None  # if None, the target entropy is set automatically
+    target_entropy: float = None
 
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
@@ -414,70 +416,59 @@ class TQCAgent(TrainingAgent):
         self.model_target = no_grad(deepcopy(self.model))
 
         # Set up optimizers for policy and q-function
-        self.pi_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor)
-        self.q_optimizer = Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()),lr=self.lr_critic)
+        self.pi_optimizer = optim.Adam(self.model.actor.parameters(), lr=self.lr_actor)
+        self.q_optimizer = optim.Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()),
+                                      lr=self.lr_critic)
 
-        # Set up optimizers for policy and q-function
-        self.pi_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor)
-        self.q_optimizer = Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()),
-                                lr=self.lr_critic)
-
-        if self.target_entropy is None:  # automatic entropy coefficient
+        if self.target_entropy is None:
             self.target_entropy = -np.prod(action_space.shape).astype(np.float32)
         else:
             self.target_entropy = float(self.target_entropy)
 
         if self.learn_entropy_coef:
-            # Note: we optimize the log of the entropy coeff which is slightly different from the paper
-            # as discussed in https://github.com/rail-berkeley/softlearning/issues/37
-            self.log_alpha = torch.log(torch.ones(1, device=self.device) * self.alpha).requires_grad_(True)
-            self.alpha_optimizer = Adam([self.log_alpha], lr=self.lr_entropy)
+            self.log_alpha = torch.log(torch.ones(1, device=device) * self.alpha).requires_grad_(True)
+            self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.lr_entropy)
         else:
-            self.alpha_t = torch.tensor(float(self.alpha)).to(self.device)
+            self.alpha_t = torch.tensor(float(self.alpha)).to(device)
 
     def get_actor(self):
         return self.model_nograd.actor
 
-    def train(self, batch):
-        state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
+    def train(self, batch, replay_buffer):
+        state, action, next_state, reward, not_done = replay_buffer.sample(batch)
         alpha = torch.exp(self.log_alpha)
 
-    # --- Q loss ---
         with torch.no_grad():
-        # get policy action
-            new_next_action, next_log_pi = self.actor(next_state)
-
-        # compute and cut quantiles at the next state
-            next_z = self.critic_target(next_state, new_next_action)  # batch x nets x quantiles
+            new_next_action, next_log_pi = self.get_actor()(next_state)
+            # Compute and cut quantiles at the next state
+            next_z = self.model_target.critic(next_state, new_next_action)
             sorted_z, _ = torch.sort(next_z.reshape(batch, -1))
             sorted_z_part = sorted_z[:, :self.quantiles_total - self.top_quantiles_to_drop]
+            # Compute target
+            target = reward + not_done * self.gamma * (sorted_z_part - alpha * next_log_pi)
 
-        # compute target
-            target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
-
-        cur_z = self.critic(state, action)
+        cur_z = self.model.critic(state, action)
         critic_loss = self.quantile_huber_loss_f(cur_z, target)
 
-        # --- Policy and alpha loss ---
-        new_action, log_pi = self.actor(state)
+        new_action, log_pi = self.get_actor()(state)
         alpha_loss = -self.log_alpha * (log_pi + self.target_entropy).detach().mean()
-        actor_loss = (alpha * log_pi - self.critic(state, new_action).mean(2).mean(1, keepdim=True)).mean()
+        actor_loss = (alpha * log_pi - self.model.critic(state, new_action).mean(2).mean(1, keepdim=True)).mean()
 
-        # --- Update ---
-        self.critic_optimizer.zero_grad()
+        self.q_optimizer.zero_grad()
         critic_loss.backward()
-        self.critic_optimizer.step()
+        self.q_optimizer.step()
 
-        for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+        for param, target_param in zip(self.model.critic.parameters(), self.model_target.critic.parameters()):
+            target_param.data.copy_(self.polyak * param.data + (1 - self.polyak) * target_param.data)
 
-        self.actor_optimizer.zero_grad()
+        self.pi_optimizer.zero_grad()
         actor_loss.backward()
-        self.actor_optimizer.step()
+        self.pi_optimizer.step()
 
-        self.alpha_optimizer.zero_grad()
-        alpha_loss.backward()
-        self.alpha_optimizer.step()
+        if self.learn_entropy_coef:
+            self.alpha_optimizer.zero_grad()
+            alpha_loss.backward()
+            self.alpha_optimizer.step()
 
         self.total_it += 1
     def quantile_huber_loss_f(self,quantiles, samples):
