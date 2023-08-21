@@ -471,6 +471,8 @@ class TQCAgent(TrainingAgent):
             self.alpha_optimizer.step()
 
         self.total_it += 1
+
+
     def quantile_huber_loss_f(self,quantiles, samples):
         pairwise_delta = samples[:, None, None, :] - quantiles[:, :, :, None]  # batch x nets x quantiles x samples
         abs_pairwise_delta = torch.abs(pairwise_delta)
@@ -482,65 +484,3 @@ class TQCAgent(TrainingAgent):
         tau = torch.arange(n_quantiles, device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")).float() / n_quantiles + 1 / 2 / n_quantiles
         loss = (torch.abs(tau[None, None, :, None] - (pairwise_delta < 0).float()) * huber_loss).mean()
         return loss
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    class Mlp(Module):
-        def __init__(
-                self,
-                input_size,
-                hidden_sizes,
-                output_size
-        ):
-            super().__init__()
-            # TODO: initialization
-            self.fcs = []
-            in_size = input_size
-            for i, next_size in enumerate(hidden_sizes):
-                fc = Linear(in_size, next_size)
-                self.add_module(f'fc{i}', fc)
-                self.fcs.append(fc)
-                in_size = next_size
-            self.last_fc = Linear(in_size, output_size)
-
-        def forward(self, input):
-            h = input
-            for fc in self.fcs:
-                h = relu(fc(h))
-            output = self.last_fc(h)
-            return output
-
-    class TanhNormal(Distribution):
-        def __init__(self, normal_mean, normal_std):
-            super().__init__()
-            self.normal_mean = normal_mean
-            self.normal_std = normal_std
-            self.standard_normal = Normal(torch.zeros_like(self.normal_mean, device=self.device or ("cuda" if torch.cuda.is_available() else "cpu")),
-                                          torch.ones_like(self.normal_std, device=self.device or ("cuda" if torch.cuda.is_available() else "cpu")))
-            self.normal = Normal(normal_mean, normal_std)
-
-        def log_prob(self, pre_tanh):
-            log_det = 2 * np.log(2) + logsigmoid(2 * pre_tanh) + logsigmoid(-2 * pre_tanh)
-            result = self.normal.log_prob(pre_tanh) - log_det
-            return result
-
-        def rsample(self):
-            pretanh = self.normal_mean + self.normal_std * self.standard_normal.sample()
-            return torch.tanh(pretanh), pretanh
