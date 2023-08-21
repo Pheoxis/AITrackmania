@@ -5,19 +5,24 @@ import pickle
 # third-party imports
 import numpy as np
 import logging
+
 logging.basicConfig(level=logging.INFO)
+
 
 class RewardFunction:
     """
     Computes a reward from the Openplanet API for Trackmania 2020.
     """
+
     def __init__(self,
                  reward_data_path,
                  nb_obs_forward=10,
                  nb_obs_backward=10,
                  nb_zero_rew_before_failure=10,
                  min_nb_steps_before_failure=int(3.5 * 20),
-                 max_dist_from_traj=60.0):
+                 max_dist_from_traj=60.0,
+                 crash_penalty=100.0,
+                 constant_penalty=0.0):
         """
         Instantiates a reward function for TM2020.
 
@@ -45,10 +50,15 @@ class RewardFunction:
         self.step_counter = 0
         self.failure_counter = 0
         self.datalen = len(self.data)
-
+        self.survive_reward = 0.5
+        self.crash_penalty = crash_penalty
+        self.constant_penalty = constant_penalty
+        self.gas_reward = 0.1
+        self.brake_penalty = -0.2
+        self.counter = 0
         # self.traj = []
 
-    def compute_reward(self, pos):
+    def compute_reward(self, pos, crashed: bool = False, gas_input: bool = None, brake_input: bool = None, speed: float = None):
         terminated = False
         self.step_counter += 1
         min_dist = np.inf
@@ -89,6 +99,32 @@ class RewardFunction:
         else:
             self.failure_counter = 0
         self.cur_idx = best_index
+
+        if crashed:
+            reward -= abs(self.crash_penalty)
+
+        if gas_input is not None and brake_input is not None:
+            if gas_input:
+                reward += self.gas_reward
+            else:
+                reward -= self.gas_reward
+            if brake_input:
+                reward += self.brake_penalty
+
+        if speed is not None:
+            reward += speed / 50.
+
+        if terminated:
+            self.counter += 1
+            if self.counter % 4 == 0:
+                self.min_nb_steps_before_failure += 1
+
+        # if not terminated:
+        #     reward += self.survive_reward
+        #     self.survive_reward *= 1.25
+        # else:
+        #     self.survive_reward = 0.5
+        reward -= abs(self.constant_penalty)
         return reward, terminated, self.failure_counter
 
     def reset(self):

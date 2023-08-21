@@ -15,9 +15,9 @@ class TM2020InterfaceTrackMap(TM2020InterfaceLidar):
         self.lidar = None
         self.last_pos = [0, 0]
         self.index = 0
-        self.map_left = np.loadtxt(r'C:\Users\Kamil\Desktop\Inz\tmrlBase\tmrl\saved_tracks\tmrl-test\track_left.csv',
+        self.map_left = np.loadtxt('saved_tracks/tmrl-test/track_left.csv',
                                    delimiter=',')
-        self.map_right = np.loadtxt(r'C:\Users\Kamil\Desktop\Inz\tmrlBase\tmrl\saved_tracks\tmrl-test\track_right.csv',
+        self.map_right = np.loadtxt('saved_tracks/tmrl-test/track_right.csv',
                                     delimiter=',')
         self.all_observed_track_parts = [[], [], [], [], []]
 

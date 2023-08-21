@@ -40,6 +40,7 @@ class SquashedGaussianRNNActor(nn.Module):
         self.h = None
         self.rnn_size = rnn_size
         self.rnn_len = rnn_len
+        self.dropout = nn.Dropout(0.1)
 
     def forward(self, obs_seq, test=False, with_logprob=True, save_hidden=False):
         """
@@ -60,9 +61,12 @@ class SquashedGaussianRNNActor(nn.Module):
             h = self.h
 
         obs_seq_cat = torch.cat(obs_seq, -1)
+
         net_out, h = self.rnn(obs_seq_cat, h)
         net_out = net_out[:, -1]
         net_out = self.mlp(net_out)
+        net_out = self.dropout(net_out)
+
         mu = self.mu_layer(net_out)
         log_std = self.log_std_layer(net_out)
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
@@ -113,11 +117,12 @@ class RNNQFunction(nn.Module):
         super().__init__()
         dim_obs = sum(prod(s for s in space.shape) for space in obs_space)
         dim_act = act_space.shape[0]
-        self.rnn = rnn(dim_obs, rnn_size, rnn_len)
+        self.rnn = self.rnn(dim_obs, rnn_size, rnn_len)
         self.mlp = mlp([rnn_size + dim_act] + list(mlp_sizes) + [1], activation)
         self.h = None
         self.rnn_size = rnn_size
         self.rnn_len = rnn_len
+        self.dropout = nn.Dropout(0.1)
 
     def forward(self, obs_seq, act, save_hidden=False):
         """
@@ -154,6 +159,7 @@ class RNNQFunction(nn.Module):
         net_out = torch.cat((net_out, act), -1)
         # logging.debug(f"3 net_out.shape:{net_out.shape}")
         q = self.mlp(net_out)
+        q = self.dropout(q)
 
         if save_hidden:
             self.h = h

@@ -169,7 +169,9 @@ class Memory(ABC):
             po, a, o, r, d, t = info['crc_sample']
             check_samples_crc(po, a, o, r, d, t, prev_obs, new_act, new_obs, rew, terminated, truncated)
         if self.sample_preprocessor is not None:
-            prev_obs, new_act, rew, new_obs, terminated, truncated = self.sample_preprocessor(prev_obs, new_act, rew, new_obs, terminated, truncated)
+            prev_obs, new_act, rew, new_obs, terminated, truncated = self.sample_preprocessor(
+                prev_obs, new_act, rew, new_obs, terminated, truncated
+            )
         terminated = np.float32(terminated)  # we don't want bool tensors
         truncated = np.float32(truncated)  # we don't want bool tensors
         return prev_obs, new_act, rew, new_obs, terminated, truncated
