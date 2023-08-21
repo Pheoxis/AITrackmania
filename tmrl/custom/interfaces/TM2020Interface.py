@@ -31,7 +31,8 @@ class TM2020Interface(RealTimeGymInterface):
                  grayscale: bool = True,
                  resize_to=(64, 64),
                  finish_reward=cfg.REWARD_END_OF_TRACK,
-                 constant_penalty=cfg.CONSTANT_PENALTY):
+                 constant_penalty=cfg.CONSTANT_PENALTY,
+                 crash_penalty=cfg.CRASH_PENALTY):
         """
         Base rtgym interface for TrackMania 2020 (Full environment)
 
@@ -63,6 +64,7 @@ class TM2020Interface(RealTimeGymInterface):
         self.constant_penalty = constant_penalty
         self.isFirstTime = True
         self.initialized = False
+        self.crash_penalty = crash_penalty
 
     def initialize_common(self):
         if self.gamepad:
@@ -79,7 +81,10 @@ class TM2020Interface(RealTimeGymInterface):
                                               nb_obs_forward=NB_OBS_FORWARD,
                                               nb_obs_backward=10,
                                               nb_zero_rew_before_failure=10,
-                                              min_nb_steps_before_failure=self.min_nb_steps_before_failure)
+                                              min_nb_steps_before_failure=self.min_nb_steps_before_failure,
+                                              crash_penalty=self.crash_penalty,
+                                              constant_penalty=self.constant_penalty
+                                              )
         self.client = TM2020OpenPlanetClient()
 
     def initialize(self):

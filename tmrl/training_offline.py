@@ -117,7 +117,7 @@ class TrainingOffline:
 
             t_sample_prev = t2
 
-            for batch in self.memory:  # this samples a fixed number of batches
+            for batch_index, batch in enumerate(self.memory):  # this samples a fixed number of batches
 
                 t_sample = time.time()
 
@@ -129,7 +129,8 @@ class TrainingOffline:
 
                 if self.total_updates == 0:
                     logging.info(f"starting training")
-
+                if batch_index % 4 == 0:
+                    logging.info(f"batch {batch_index} out of {self.steps} has finished")
                 stats_training_dict = self.agent.train(batch)
 
                 t_train = time.time()

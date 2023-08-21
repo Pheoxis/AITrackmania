@@ -7,6 +7,7 @@ import atexit
 import json
 import shutil
 import tempfile
+from math import ceil
 from os.path import exists
 
 # third-party imports
@@ -533,6 +534,9 @@ class RolloutWorker:
         else:
             self.__endpoint = None
 
+        self.round_reward = 0.0
+        self.highest_reward = 0.0
+
     def act(self, obs, test=False):
         """
         Select an action based on observation `obs`
@@ -547,6 +551,7 @@ class RolloutWorker:
         # if self.obs_preprocessor is not None:
         #     obs = self.obs_preprocessor(obs)
         action = self.actor.act_(obs, test=test)
+        # action = self.actor.act_(obs, test=test)
         return action
 
     def reset(self, collect_samples):
@@ -587,6 +592,7 @@ class RolloutWorker:
         This is because is does not directly affect the new observation, due to real-time delays.
 
         Args:
+            reward_function:
             obs (nested structure): previous observation
             test (bool): passed to the `act()` method of the `ActorModule`
             collect_samples (bool): if True, samples are buffered and sent to the `Server`
@@ -602,6 +608,9 @@ class RolloutWorker:
         """
         act = self.act(obs, test=test)
         new_obs, rew, terminated, truncated, info = self.env.step(act)
+
+        self.round_reward += rew
+
         if self.obs_preprocessor is not None:
             new_obs = self.obs_preprocessor(new_obs)
         if collect_samples:
@@ -614,6 +623,13 @@ class RolloutWorker:
             else:
                 sample = act, new_obs, rew, terminated, truncated, info
             self.buffer.append_sample(sample)  # CAUTION: in the buffer, act is for the PREVIOUS transition (act, obs(act))
+        # if reward_function is not None:
+        #     if terminated or truncated:
+        #         print(f"round reward: {self.round_reward}")
+        #         if self.highest_reward < self.round_reward:
+        #             self.highest_reward = self.round_reward
+        #             reward_function.min_nb_steps_before_failure = int(ceil(reward_function.min_nb_steps_before_failure * 1.1))
+        #         self.round_reward = 0.0
         return new_obs, rew, terminated, truncated, info
 
     def collect_train_episode(self, max_samples):

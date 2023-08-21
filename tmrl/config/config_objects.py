@@ -17,10 +17,11 @@ from custom.models.MobileNetActorCritic import MobileNetActorCritic, SquashedAct
 from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
 from custom.models.VanillaColorCNNActorCritic import VanillaColorCNNActorCritic, SquashedGaussianVanillaColorCNNActor
 from training_offline import TorchTrainingOffline
-from custom.custom_memories import MemoryTMFull, MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, \
-    get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs
+from custom.custom_memories import MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, \
+    get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs, MemoryTMMobileNet, \
+    get_local_buffer_sample_mobilenet, MemoryTMFull
 from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
-    obs_preprocessor_tm_lidar_progress_act_in_obs
+    obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
 from envs import GenericGymEnv
 from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
 from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
@@ -44,13 +45,13 @@ if cfg.PRAGMA_LIDAR:
 else:
     if cfg.PRAGMA_CUSTOM:
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = MobileNetActorCritic #mojaKlasa
-        POLICY = SquashedActorMobileNetV3 #mojaKlasa
+        TRAIN_MODEL = MobileNetActorCritic
+        POLICY = SquashedActorMobileNetV3
     else:
         assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = MobileNetActorCritic
-        POLICY = SquashedActorMobileNetV3
+        TRAIN_MODEL = VanillaCNNActorCritic if cfg.GRAYSCALE else VanillaColorCNNActorCritic
+        POLICY = SquashedGaussianVanillaCNNActor if cfg.GRAYSCALE else SquashedGaussianVanillaColorCNNActor
 
 if cfg.PRAGMA_LIDAR:
     if cfg.PRAGMA_PROGRESS:
@@ -61,7 +62,11 @@ if cfg.PRAGMA_LIDAR:
         INT = partial(TM2020InterfaceLidar, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
 else:
     if cfg.PRAGMA_CUSTOM:
-        INT = partial(TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
+        INT = partial(
+            TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
+            grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
+            crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY
+        )
     else:
         INT = partial(TM2020Interface,
                       img_hist_len=cfg.IMG_HIST_LEN,
@@ -82,7 +87,10 @@ if cfg.PRAGMA_LIDAR:
     else:
         SAMPLE_COMPRESSOR = get_local_buffer_sample_lidar
 else:
-    SAMPLE_COMPRESSOR = get_local_buffer_sample_tm20_imgs
+    if cfg.PRAGMA_CUSTOM:
+        SAMPLE_COMPRESSOR = get_local_buffer_sample_mobilenet
+    else:
+        SAMPLE_COMPRESSOR = get_local_buffer_sample_tm20_imgs
 
 # to preprocess observations that come out of the gymnasium environment:
 if cfg.PRAGMA_LIDAR:
@@ -91,7 +99,10 @@ if cfg.PRAGMA_LIDAR:
     else:
         OBS_PREPROCESSOR = obs_preprocessor_tm_lidar_act_in_obs
 else:
-    OBS_PREPROCESSOR = obs_preprocessor_tm_act_in_obs
+    if cfg.PRAGMA_CUSTOM:
+        OBS_PREPROCESSOR = obs_preprocessor_mobilenet_act_in_obs
+    else:
+        OBS_PREPROCESSOR = obs_preprocessor_tm_act_in_obs
 # to augment data that comes out of the replay buffer:
 SAMPLE_PREPROCESSOR = None
 
@@ -106,7 +117,11 @@ if cfg.PRAGMA_LIDAR:
         else:
             MEM = MemoryTMLidar
 else:
-    MEM = MemoryTMFull
+    if cfg.PRAGMA_CUSTOM:
+        MEM = MemoryTMMobileNet
+    else:
+        MEM = MemoryTMFull
+
 
 MEMORY = partial(MEM,
                  memory_size=cfg.TMRL_CONFIG["MEMORY_SIZE"],

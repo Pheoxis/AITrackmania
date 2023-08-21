@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 # local imports
 from custom.models import MLPActorCritic, REDQMLPActorCritic
@@ -151,7 +152,7 @@ class REDQSACAgent(TrainingAgent):
         return ret_dict
 
 
-# REDQ-SAC =============================================================================================================
+# SAC with optional learnable entropy coefficent =======================================================================
 
 @dataclass(eq=False)
 class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
@@ -181,6 +182,9 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
         # Set up optimizers for policy and q-function
         self.pi_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor)
         self.q_optimizer = Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()), lr=self.lr_critic)
+
+        # self.pi_scheduler = ReduceLROnPlateau(self.pi_optimizer, mode='max', patience=4, cooldown=1, eps=1)
+        # self.q_optimizer = ReduceLROnPlateau(self.q_optimizer, 'min', cooldown=1)
 
         if self.target_entropy is None:  # automatic entropy coefficient
             self.target_entropy = -np.prod(action_space.shape).astype(np.float32)
