@@ -475,6 +475,7 @@ class MemoryTMFull(MemoryTM):
 # ============= custom mobilenet memory ==============
 
 class MemoryTMMobileNet(MemoryTM):
+
     def get_transition(self, item):
         """
         CAUTION: item is the first index of the 4 images in the images history of the OLD observation

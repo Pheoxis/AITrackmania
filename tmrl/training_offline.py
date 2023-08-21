@@ -129,7 +129,8 @@ class TrainingOffline:
 
                 if self.total_updates == 0:
                     logging.info(f"starting training")
-                logging.info(f"batch {batch_index} out of {self.steps} has finished")
+                if batch_index % 4 == 0:
+                    logging.info(f"batch {batch_index} out of {self.steps} has finished")
                 stats_training_dict = self.agent.train(batch)
 
                 t_train = time.time()

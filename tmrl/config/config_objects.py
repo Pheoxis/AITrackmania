@@ -62,7 +62,11 @@ if cfg.PRAGMA_LIDAR:
         INT = partial(TM2020InterfaceLidar, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
 else:
     if cfg.PRAGMA_CUSTOM:
-        INT = partial(TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
+        INT = partial(
+            TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
+            grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
+            crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY
+        )
     else:
         INT = partial(TM2020Interface,
                       img_hist_len=cfg.IMG_HIST_LEN,

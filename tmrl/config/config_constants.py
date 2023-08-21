@@ -16,10 +16,12 @@ with open(CONFIG_FILE) as f:
     TMRL_CONFIG = json.load(f)
 
 RUN_NAME = TMRL_CONFIG["RUN_NAME"]  # "SACv1_SPINUP_4_LIDAR_pretrained_test_9"
-BUFFERS_MAXLEN = TMRL_CONFIG[
-    "BUFFERS_MAXLEN"]  # Maximum length of the local buffers for RolloutWorkers, Server and TrainerInterface
-RW_MAX_SAMPLES_PER_EPISODE = TMRL_CONFIG[
-    "RW_MAX_SAMPLES_PER_EPISODE"]  # If this number of timesteps is reached, the RolloutWorker will reset the episode
+
+# Maximum length of the local buffers for RolloutWorkers, Server and TrainerInterface:
+BUFFERS_MAXLEN = TMRL_CONFIG["BUFFERS_MAXLEN"]
+
+# If this number of timesteps is reached, the RolloutWorker will reset the episode:
+RW_MAX_SAMPLES_PER_EPISODE = TMRL_CONFIG["RW_MAX_SAMPLES_PER_EPISODE"]
 
 PRAGMA_RNN = False  # True to use an RNN, False to use an MLP
 
@@ -40,7 +42,8 @@ SERVER_IP_FOR_TRAINER = PUBLIC_IP_SERVER if not LOCALHOST_TRAINER else "127.0.0.
 ENV_CONFIG = TMRL_CONFIG["ENV"]
 RTGYM_INTERFACE = str(ENV_CONFIG["RTGYM_INTERFACE"]).upper()
 PRAGMA_LIDAR = RTGYM_INTERFACE.endswith("LIDAR")  # True if Lidar, False if images
-PRAGMA_CUSTOM = RTGYM_INTERFACE.endswith("MOBILEV3") or RTGYM_INTERFACE.endswith("CUSTOM") # True if Lidar, False if images
+# True if Lidar, False if images:
+PRAGMA_CUSTOM = RTGYM_INTERFACE.endswith("MOBILEV3") or RTGYM_INTERFACE.endswith("CUSTOM")
 PRAGMA_PROGRESS = RTGYM_INTERFACE.endswith("LIDARPROGRESS")
 PRAGMA_TRACKMAP = RTGYM_INTERFACE.endswith("TRACKMAP")
 
@@ -48,7 +51,8 @@ if PRAGMA_PROGRESS or PRAGMA_TRACKMAP:
     PRAGMA_LIDAR = True
 LIDAR_BLACK_THRESHOLD = [55, 55, 55]  # [88, 88, 88] for tiny road, [55, 55, 55] FOR BASIC ROAD
 REWARD_END_OF_TRACK = 100  # bonus reward at the end of the track
-CONSTANT_PENALTY = -1  # should be <= 0 : added to the reward at each time step
+CONSTANT_PENALTY = 1  # should be <= 0 : added to the reward at each time step
+CRASH_PENALTY = 50
 SLEEP_TIME_AT_RESET = ENV_CONFIG["SLEEP_TIME_AT_RESET"]  # 1.5 to start in a Markov state with the lidar
 IMG_HIST_LEN = ENV_CONFIG["IMG_HIST_LEN"]  # 4 without RNN, 1 with RNN
 ACT_BUF_LEN = ENV_CONFIG["RTGYM_CONFIG"]["act_buf_len"]

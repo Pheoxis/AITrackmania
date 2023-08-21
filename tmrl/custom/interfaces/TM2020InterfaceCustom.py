@@ -10,14 +10,19 @@ import config.config_constants as cfg
 
 class TM2020InterfaceCustom(TM2020Interface):
     def __init__(
-            self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(20 * 3.5),
-            record=False, save_replay: bool = False, crash_penalty: int = 10,
-            grayscale: bool = False, resize_to: tuple = (128, 64)
+            self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(160),
+            record=False, save_replay: bool = False,
+            grayscale: bool = False, resize_to: tuple = (128, 64),
+            finish_reward=cfg.REWARD_END_OF_TRACK, constant_penalty: float = 0.25,
+            crash_penalty=cfg.CRASH_PENALTY
     ):
-        super().__init__(img_hist_len, gamepad, min_nb_steps_before_failure, save_replay, grayscale, resize_to)
+        super().__init__(
+            img_hist_len=img_hist_len, gamepad=gamepad, min_nb_steps_before_failure=min_nb_steps_before_failure,
+            save_replays=save_replay, grayscale=grayscale, finish_reward=finish_reward, resize_to=resize_to,
+            constant_penalty=constant_penalty, crash_penalty=crash_penalty
+        )
         self.record = record
         self.window_interface = None
-        self.crash_penalty = crash_penalty
 
     def get_observation_space(self):
         # https://gymnasium.farama.org/api/spaces/
@@ -156,13 +161,11 @@ class TM2020InterfaceCustom(TM2020Interface):
 
         surface_id = np.array([data[36:40]], dtype='float32')
 
-        crashed = np.array([data[32]], dtype='float32')
+        crashed = np.array([data[32]], dtype='int16')
         end_of_track = bool(data[30])
 
         info = {}
-        reward = 0
-        if crashed == 1:
-            reward -= self.crash_penalty
+        reward = 0.0
         if end_of_track:
             terminated = True
             reward += self.finish_reward
@@ -171,7 +174,9 @@ class TM2020InterfaceCustom(TM2020Interface):
                 mouse_save_replay_tm20(True)
         else:
             rew, terminated, failure_counter = self.reward_function.compute_reward(
-                pos=np.array([data[4], data[5], data[6]])  # position x,y,z
+                pos=np.array([data[4], data[5], data[6]]),  # position x,y,z
+                crashed=bool(crashed), gas_input=bool(input_gas_pedal), brake_input=bool(input_brake),
+                speed=speed[0]
             )
             reward += rew
 
@@ -190,8 +195,8 @@ class TM2020InterfaceCustom(TM2020Interface):
             img
         ]
 
-        reward += self.constant_penalty
         reward = np.float32(reward)
+        # print(f"Reward: {reward}, crashed {bool(crashed)}, race progress {round(race_progress[0], 2)}")
         return observation, reward, terminated, info
 
     def reset(self, seed=None, options=None):
