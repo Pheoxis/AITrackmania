@@ -14,6 +14,7 @@ from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
 from custom.models.MobileNetActorCritic import MobileNetActorCritic, SquashedActorMobileNetV3
+from custom.models.TQCActorCritic import QuantileActorCritic
 from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
 from custom.models.VanillaColorCNNActorCritic import VanillaColorCNNActorCritic, SquashedGaussianVanillaColorCNNActor
 from training_offline import TorchTrainingOffline
@@ -24,6 +25,7 @@ from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_prep
     obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
 from envs import GenericGymEnv
 from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
+from custom.custom_algorithms import  TQCAgent
 from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
 from custom.custom_checkpoints import update_run_instance
 from util import partial
@@ -46,6 +48,10 @@ else:
     if cfg.PRAGMA_CUSTOM:
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
         TRAIN_MODEL = MobileNetActorCritic
+        POLICY = SquashedActorMobileNetV3
+    elif  cfg.PRAGMA_TQC:
+        assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
+        TRAIN_MODEL = QuantileActorCritic
         POLICY = SquashedActorMobileNetV3
     else:
         assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
@@ -148,6 +154,21 @@ if ALG_NAME == "SAC":
         target_entropy=ALG_CONFIG["TARGET_ENTROPY"],  # None for automatic
         alpha=ALG_CONFIG["ALPHA"]  # inverse of reward scale
     )
+elif ALG_NAME == "TQC":
+    AGENT = partial(
+        TQCAgent,
+        device='cuda' if cfg.CUDA_TRAINING else 'cpu',
+        model_cls=TRAIN_MODEL,
+        lr_actor=ALG_CONFIG["LR_ACTOR"],
+        lr_critic=ALG_CONFIG["LR_CRITIC"],
+        lr_entropy=ALG_CONFIG["LR_ENTROPY"],
+        gamma=ALG_CONFIG["GAMMA"],
+        polyak=ALG_CONFIG["POLYAK"],
+        learn_entropy_coef=ALG_CONFIG["LEARN_ENTROPY_COEF"],  # False for SAC v2 with no temperature autotuning
+        target_entropy=ALG_CONFIG["TARGET_ENTROPY"],  # None for automatic
+        alpha=ALG_CONFIG["ALPHA"]  # inverse of reward scale
+    )
+
 else:
     AGENT = partial(
         REDQ_Agent,

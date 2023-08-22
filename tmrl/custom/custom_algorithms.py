@@ -6,6 +6,8 @@ from torch.nn import Module, Linear
 from torch.nn.functional import relu, logsigmoid
 from torch.distributions import Distribution, Normal
 import torch.optim as optim
+
+from custom.models.TQCActorCritic import QuantileActorCritic
 from models.RNNActorCritic import SquashedGaussianRNNActor
 
 # third-party imports
@@ -395,11 +397,11 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
         return ret_dict
 
 @dataclass(eq=False)
-class TQCAgent(TrainingAgent):
+class SpinupSacAgent(TrainingAgent):
     observation_space: type
     action_space: type
     device: str = None
-    model_cls: type = MLPActorCritic
+    model_cls: type = QuantileActorCritic  # Replace with your QuantileActorCritic class
     gamma: float = 0.99
     polyak: float = 0.995
     alpha: float = 0.2
@@ -414,15 +416,15 @@ class TQCAgent(TrainingAgent):
     def __post_init__(self):
         observation_space, action_space = self.observation_space, self.action_space
         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
-        model = self.model_cls(observation_space, action_space)
+        model = self.model_cls(observation_space, action_space)  # Use TQCActorCritic
         logging.debug(f" device SAC: {device}")
         self.model = model.to(device)
         self.model_target = no_grad(deepcopy(self.model))
 
         # Set up optimizers for policy and q-function
-        self.pi_optimizer = optim.Adam(self.model.actor.parameters(), lr=self.lr_actor)
-        self.q_optimizer = optim.Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()),
-                                      lr=self.lr_critic)
+        self.pi_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor)
+        self.q_optimizer = Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()),
+                                lr=self.lr_critic)
 
         if self.target_entropy is None:
             self.target_entropy = -np.prod(action_space.shape).astype(np.float32)
@@ -431,7 +433,7 @@ class TQCAgent(TrainingAgent):
 
         if self.learn_entropy_coef:
             self.log_alpha = torch.log(torch.ones(1, device=device) * self.alpha).requires_grad_(True)
-            self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.lr_entropy)
+            self.alpha_optimizer = Adam([self.log_alpha], lr=self.lr_entropy)
         else:
             self.alpha_t = torch.tensor(float(self.alpha)).to(device)
 
@@ -439,8 +441,30 @@ class TQCAgent(TrainingAgent):
         return self.model_nograd.actor
 
     def train(self, batch, replay_buffer):
+        o, a, r, o2, d, _ = batch
+
+        pi, logp_pi = self.model.actor(o)
+
+
+        quantile_targets = self.compute_quantile_targets(o2, a, r, o2, d, self.gamma)
+        q1_loss, q2_loss = self.update_quantile_q_functions(o, a, quantile_targets)
+
         state, action, next_state, reward, not_done = replay_buffer.sample(batch)
         alpha = torch.exp(self.log_alpha)
+
+        loss_alpha = None
+
+        if self.learn_entropy_coef:
+            # Compute alpha and its loss
+            alpha_t = torch.exp(self.log_alpha.detach())
+            loss_alpha = -(self.log_alpha * (logp_pi + self.target_entropy).detach()).mean()
+        else:
+            alpha_t = self.alpha_t
+
+        q1_pi = self.model.q1(o, pi)
+        q2_pi = self.model.q2(o, pi)
+        q_pi = torch.min(q1_pi, q2_pi)
+        loss_pi = (alpha_t * logp_pi - q_pi).mean()
 
         with torch.no_grad():
             new_next_action, next_log_pi = self.get_actor()(next_state)
@@ -469,22 +493,17 @@ class TQCAgent(TrainingAgent):
         actor_loss.backward()
         self.pi_optimizer.step()
 
+        ret_dict = {
+            "loss_actor": loss_pi.detach(),
+        "loss_critic": (q1_loss + q2_loss) / 2,  # or any other relevant critic loss
+        "loss_alpha": loss_alpha.detach() if self.learn_entropy_coef else None,
+        "alpha": alpha_t.item(),
+        }
+
         if self.learn_entropy_coef:
-            self.alpha_optimizer.zero_grad()
-            alpha_loss.backward()
-            self.alpha_optimizer.step()
+            ret_dict["loss_entropy_coef"] = loss_alpha.detach()
+            ret_dict["entropy_coef"] = alpha_t.item()
 
-        self.total_it += 1
+        return ret_dict
 
 
-    def quantile_huber_loss_f(self,quantiles, samples):
-        pairwise_delta = samples[:, None, None, :] - quantiles[:, :, :, None]  # batch x nets x quantiles x samples
-        abs_pairwise_delta = torch.abs(pairwise_delta)
-        huber_loss = torch.where(abs_pairwise_delta > 1,
-                                 abs_pairwise_delta - 0.5,
-                                 pairwise_delta ** 2 * 0.5)
-
-        n_quantiles = quantiles.shape[2]
-        tau = torch.arange(n_quantiles, device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")).float() / n_quantiles + 1 / 2 / n_quantiles
-        loss = (torch.abs(tau[None, None, :, None] - (pairwise_delta < 0).float()) * huber_loss).mean()
-        return loss
