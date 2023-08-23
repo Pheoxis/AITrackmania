@@ -132,28 +132,28 @@ class TM2020InterfaceCustom(TM2020Interface):
         # print(f"data: {data}")
 
         speed = np.array([data[0]], dtype='float32')
-        acceleration = np.array([data[1]], dtype='float32')
-        jerk = np.array([data[2]], dtype='float32')
+        acceleration = np.array([data[9]], dtype='float32')
+        jerk = np.array([data[10]], dtype='float32')
 
-        race_progress = np.array([data[3]], dtype='float32')
+        race_progress = np.array([data[1]], dtype='float32')
 
-        input_steer = np.array([data[7]], dtype='float32')
-        input_gas_pedal = np.array([data[8]], dtype='float32')
+        input_steer = np.array([data[5]], dtype='float32')
+        input_gas_pedal = np.array([data[6]], dtype='float32')
 
-        rpm = np.array([data[9]], dtype='float32')
+        rpm = np.array([data[11]], dtype='float32')
 
-        aim_yaw = np.array([data[10]], dtype='float32')
-        aim_pitch = np.array([data[11]], dtype='float32')
+        aim_yaw = np.array([data[12]], dtype='float32')
+        aim_pitch = np.array([data[13]], dtype='float32')
 
-        steer_angle = np.array([data[12:14]], dtype='float32')
-        wheel_rot = np.array([data[14:16]], dtype='float32')
-        wheel_rot_speed = np.array([data[16:18]], dtype='float32')
-        damper_len = np.array([data[18:22]], dtype='float32')
-        slip_coef = np.array([data[22:26]], dtype='float32')
-        reactor_air_control = np.array([data[26:29]], dtype='float32')
-        ground_dist = np.array([data[29]], dtype='float32')
+        steer_angle = np.array([data[14:16]], dtype='float32')
+        wheel_rot = np.array([data[16:18]], dtype='float32')
+        wheel_rot_speed = np.array([data[18:20]], dtype='float32')
+        damper_len = np.array([data[20:24]], dtype='float32')
+        slip_coef = np.array([data[24:28]], dtype='float32')
+        reactor_air_control = np.array([data[28:31]], dtype='float32')
+        ground_dist = np.array([data[31]], dtype='float32')
 
-        input_brake = np.array([data[31]], dtype='float32')
+        input_brake = np.array([data[7]], dtype='float32')
         reactor_ground_mode = np.array([data[33]], dtype='float32')
         ground_contact = np.array([data[34]], dtype='float32')
 
@@ -162,7 +162,7 @@ class TM2020InterfaceCustom(TM2020Interface):
         surface_id = np.array([data[36:40]], dtype='float32')
 
         crashed = np.array([data[32]], dtype='int16')
-        end_of_track = bool(data[30])
+        end_of_track = bool(data[8])
 
         info = {}
         reward = 0.0
@@ -174,7 +174,7 @@ class TM2020InterfaceCustom(TM2020Interface):
                 mouse_save_replay_tm20(True)
         else:
             rew, terminated, failure_counter = self.reward_function.compute_reward(
-                pos=np.array([data[4], data[5], data[6]]),  # position x,y,z
+                pos=np.array([data[2], data[3], data[4]]),  # position x,y,z
                 crashed=bool(crashed), gas_input=bool(input_gas_pedal), brake_input=bool(input_brake),
                 speed=speed[0]
             )
@@ -207,28 +207,28 @@ class TM2020InterfaceCustom(TM2020Interface):
         data, img = self.grab_data_and_img()
 
         speed = np.array([data[0]], dtype='float32')
-        acceleration = np.array([data[1]], dtype='float32')
-        jerk = np.array([data[2]], dtype='float32')
+        acceleration = np.array([data[9]], dtype='float32')
+        jerk = np.array([data[10]], dtype='float32')
 
-        race_progress = np.array([data[3]], dtype='float32')
+        race_progress = np.array([data[1]], dtype='float32')
 
-        input_steer = np.array([data[7]], dtype='float32')
-        input_gas_pedal = np.array([data[8]], dtype='float32')
+        input_steer = np.array([data[5]], dtype='float32')
+        input_gas_pedal = np.array([data[6]], dtype='float32')
 
-        rpm = np.array([data[9]], dtype='float32')
+        rpm = np.array([data[11]], dtype='float32')
 
-        aim_yaw = np.array([data[10]], dtype='float32')
-        aim_pitch = np.array([data[11]], dtype='float32')
+        aim_yaw = np.array([data[12]], dtype='float32')
+        aim_pitch = np.array([data[13]], dtype='float32')
 
-        steer_angle = np.array([data[12:14]], dtype='float32')
-        wheel_rot = np.array([data[14:16]], dtype='float32')
-        wheel_rot_speed = np.array([data[16:18]], dtype='float32')
-        damper_len = np.array([data[18:22]], dtype='float32')
-        slip_coef = np.array([data[22:26]], dtype='float32')
-        reactor_air_control = np.array([data[26:29]], dtype='float32')
-        ground_dist = np.array([data[29]], dtype='float32')
+        steer_angle = np.array([data[14:16]], dtype='float32')
+        wheel_rot = np.array([data[16:18]], dtype='float32')
+        wheel_rot_speed = np.array([data[18:20]], dtype='float32')
+        damper_len = np.array([data[20:24]], dtype='float32')
+        slip_coef = np.array([data[24:28]], dtype='float32')
+        reactor_air_control = np.array([data[28:31]], dtype='float32')
+        ground_dist = np.array([data[31]], dtype='float32')
 
-        input_brake = np.array([data[31]], dtype='float32')
+        input_brake = np.array([data[7]], dtype='float32')
         reactor_ground_mode = np.array([data[33]], dtype='float32')
         ground_contact = np.array([data[34]], dtype='float32')
 
@@ -236,7 +236,7 @@ class TM2020InterfaceCustom(TM2020Interface):
 
         surface_id = np.array([data[36:40]], dtype='float32')
 
-        crashed = np.array(data[32], dtype='float32')
+        crashed = np.array([data[32]], dtype='int16')
 
         failure_counter = 0.0
 

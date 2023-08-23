@@ -605,14 +605,13 @@ class MemoryTMMobileNet(MemoryTM):
         d14 = [np.array([b[1][12][0]]) for b in buffer.memory]  # steer_angle
         d15 = [np.array([b[1][13][0]]) for b in buffer.memory]  # wheel_rot
         d16 = [np.array([b[1][14][0]]) for b in buffer.memory]  # wheel_rot_speed
-        d17 = [np.array([b[1][15]]) for b in buffer.memory]  # damper_len
-        d18 = [np.array([b[1][16]]) for b in buffer.memory]  # slip_coef
+        d17 = [np.array(b[1][15]) for b in buffer.memory]  # damper_len
+        d18 = [np.array(b[1][16]) for b in buffer.memory]  # slip_coef
         d19 = [np.array([b[1][17]]) for b in buffer.memory]  # reactor_ground_mode
         d20 = [np.array([b[1][18]]) for b in buffer.memory]  # ground_contact
-        d21 = [np.array([b[1][19]]) for b in buffer.memory]  # reactor_air_control
+        d21 = [np.array(b[1][19]) for b in buffer.memory]  # reactor_air_control
         d22 = [np.array([b[1][20]]) for b in buffer.memory]  # ground_dist
         d23 = [b[1][21].tolist() for b in buffer.memory]  # crashed
-        d23[0] = [d23[0]]
         d23 = [np.array([el]) for el in d23]
         d24 = [np.array([b[1][22]]) for b in buffer.memory]  # failure counter
         d25 = [b[1][23] for b in buffer.memory]  # imgs

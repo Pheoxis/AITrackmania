@@ -6,6 +6,7 @@ from dataclasses import dataclass
 # third-party imports
 import numpy as np
 import torch
+import wandb
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
@@ -49,8 +50,8 @@ class REDQSACAgent(TrainingAgent):
         logging.debug(f" device REDQ-SAC: {device}")
         self.model = model.to(device)
         self.model_target = no_grad(deepcopy(self.model))
-        self.pi_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor)
-        self.q_optimizer_list = [Adam(q.parameters(), lr=self.lr_critic) for q in self.model.qs]
+        self.pi_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor, weight_decay=0.01)
+        self.q_optimizer_list = [Adam(q.parameters(), lr=self.lr_critic, weight_decay=0.005) for q in self.model.qs]
         self.criterion = torch.nn.MSELoss()
         self.loss_pi = torch.zeros((1,), device=device)
 
@@ -198,6 +199,9 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
             self.alpha_optimizer = Adam([self.log_alpha], lr=self.lr_entropy)
         else:
             self.alpha_t = torch.tensor(float(self.alpha)).to(self.device)
+
+        if cfg.WANDB_GRADIENTS:
+            wandb.watch(self.model, log_freq=10)
 
     def get_actor(self):
         return self.model_nograd.actor
