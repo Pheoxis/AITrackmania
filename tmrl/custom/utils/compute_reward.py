@@ -6,6 +6,8 @@ import pickle
 import numpy as np
 import logging
 
+import wandb
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -16,12 +18,12 @@ class RewardFunction:
 
     def __init__(self,
                  reward_data_path,
-                 nb_obs_forward=10,
-                 nb_obs_backward=10,
-                 nb_zero_rew_before_failure=10,
+                 nb_obs_forward=8,
+                 nb_obs_backward=8,
+                 nb_zero_rew_before_failure=12,
                  min_nb_steps_before_failure=int(3.5 * 20),
                  max_dist_from_traj=60.0,
-                 crash_penalty=100.0,
+                 crash_penalty=10.0,
                  constant_penalty=0.0):
         """
         Instantiates a reward function for TM2020.
@@ -52,13 +54,20 @@ class RewardFunction:
         self.datalen = len(self.data)
         self.survive_reward = 0.5
         self.crash_penalty = crash_penalty
+        self.crash_counter = 1
         self.constant_penalty = constant_penalty
-        self.gas_reward = 0.1
-        self.brake_penalty = -0.2
+        self.gas_reward = 0.0001
+        self.brake_penalty = -0.0002
         self.counter = 0
+        self.reward_sum = 0.0
+        # self.tmp_counter = 0
         # self.traj = []
 
-    def compute_reward(self, pos, crashed: bool = False, gas_input: bool = None, brake_input: bool = None, speed: float = None):
+    def compute_reward(self, pos, crashed: bool = False, gas_input: bool = None, brake_input: bool = None,
+                       speed: float = None):
+        # self.tmp_counter += 1
+        # if self.tmp_counter % 10 == 0:
+        #     print(f"pos: {pos}, first pos from reward: {self.data[0]}")
         terminated = False
         self.step_counter += 1
         min_dist = np.inf
@@ -101,29 +110,17 @@ class RewardFunction:
         self.cur_idx = best_index
 
         if crashed:
-            reward -= abs(self.crash_penalty)
+            reward -= abs(self.crash_penalty) * self.crash_counter
+            self.crash_counter += 1
 
-        if gas_input is not None and brake_input is not None:
-            if gas_input:
-                reward += self.gas_reward
-            else:
-                reward -= self.gas_reward
-            if brake_input:
-                reward += self.brake_penalty
-
-        if speed is not None:
-            reward += speed / 50.
-
+        self.reward_sum += reward
         if terminated:
             self.counter += 1
-            if self.counter % 4 == 0:
-                self.min_nb_steps_before_failure += 1
+            print(f"Total reward of the run: {self.reward_sum}")
+            # logging.info(f"Total reward of the run: {self.reward_sum}")
+            # if self.counter % 2 == 0:
+            #     self.min_nb_steps_before_failure += 2
 
-        # if not terminated:
-        #     reward += self.survive_reward
-        #     self.survive_reward *= 1.25
-        # else:
-        #     self.survive_reward = 0.5
         reward -= abs(self.constant_penalty)
         return reward, terminated, self.failure_counter
 
@@ -140,5 +137,7 @@ class RewardFunction:
         self.cur_idx = 0
         self.step_counter = 0
         self.failure_counter = 0
+        self.reward_sum = 0.0
+        self.crash_counter = 1
 
         # self.traj = []

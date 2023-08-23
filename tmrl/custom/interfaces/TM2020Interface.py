@@ -79,8 +79,8 @@ class TM2020Interface(RealTimeGymInterface):
         self.img = None
         self.reward_function = RewardFunction(reward_data_path=cfg.REWARD_PATH,
                                               nb_obs_forward=NB_OBS_FORWARD,
-                                              nb_obs_backward=10,
-                                              nb_zero_rew_before_failure=10,
+                                              nb_obs_backward=NB_OBS_FORWARD,
+                                              nb_zero_rew_before_failure=12,
                                               min_nb_steps_before_failure=self.min_nb_steps_before_failure,
                                               crash_penalty=self.crash_penalty,
                                               constant_penalty=self.constant_penalty
