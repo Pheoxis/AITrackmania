@@ -2,10 +2,9 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchvision.transforms.functional as TF
 from torch import nn
 from torch.distributions import Normal
-from MobileNetActorCritic import  SquashedActorMobileNetV3
+
 from actor import TorchActorModule
 from custom.models.MobileNetV3 import mobilenetv3_small, mobilenetv3_large
 from custom.models.model_blocks import mlp
@@ -14,10 +13,12 @@ from custom.models.model_blocks import mlp
 LOG_STD_MIN = -20
 LOG_STD_MAX = 2
 
+
 def conv1x1(self, x):
     x = torch.squeeze(x, dim=2)  # Squeeze the third dimension
     x = torch.squeeze(x, dim=2)  # Squeeze the fourth dimension
     return F.conv2d(x, self.conv1x1_weights)
+
 
 def gru(input_size, rnn_size, rnn_len):
     num_rnn_layers = rnn_len
@@ -43,6 +44,8 @@ def lstm(input_size, rnn_size, rnn_len):
     )
 
     return lstm_layers
+
+
 # ... (other imports and definitions remain the same)
 def rnn(input_size, rnn_size, rnn_len):
     num_rnn_layers = rnn_len
@@ -54,6 +57,8 @@ def rnn(input_size, rnn_size, rnn_len):
         bias=True, batch_first=True, dropout=0, bidirectional=False
     )
     return gru
+
+
 # def mlp(sizes, activation=nn.ReLU, output_activation=None):
 #     layers = []
 #     for i in range(len(sizes) - 1):
@@ -66,6 +71,7 @@ def quantile_huber_loss(y_pred, y_target, kappa):
     u = y_target - y_pred
     loss = torch.where(torch.abs(u) < kappa, 0.5 * u ** 2, kappa * (torch.abs(u) - 0.5 * kappa))
     return loss.mean(dim=-1)
+
 
 class TwinQuantileQFunction(nn.Module):
     def __init__(self, action_space, num_quantiles, rnn_size, rnn_len, mlp_sizes, activation, num_classes):
@@ -127,12 +133,11 @@ class TwinQuantileQFunction(nn.Module):
 
         return quantiles
 
+
 class TQCSquashedActorMobileNetV3(TorchActorModule):
-
-
     def __init__(
-        self, observation_space, action_space,num_quantiles, rnn_size=100, rnn_len=4,
-        mlp_sizes=(128, 256, 256, 100), activation=nn.ReLU, num_classes=85
+            self, observation_space, action_space, rnn_size=100, rnn_len=2,
+            mlp_sizes=(128, 256, 256, 100), activation=nn.ReLU, num_classes=85
     ):
         super().__init__(
             observation_space, action_space
@@ -152,7 +157,6 @@ class TQCSquashedActorMobileNetV3(TorchActorModule):
         self.rnn_size = rnn_size
         self.rnn_len = rnn_len
         self.conv1x1_weights = nn.Parameter(torch.randn(rnn_size, 1, 1))
-        self.num_quantiles = num_quantiles
 
     def forward(self, observation, test=False, with_logprob=True, save_hidden=False):
         # worker: list of 26 elements
@@ -249,27 +253,30 @@ class TQCSquashedActorMobileNetV3(TorchActorModule):
 
     def compute_tqc_loss(self, obs_seq, actions, rewards, next_obs_seq, dones, discount_factor, kappa):
         next_actions, next_logp_pi = self.forward(next_obs_seq, with_logprob=True)
-        target_quantiles = self.q1(next_obs_seq, next_actions, self.num_quantiles)
+        target_quantiles = self.q1(next_obs_seq, next_actions)
 
         # ... (calculate quantile targets using Bellman equation)
 
-        q1_values = self.q1(obs_seq, actions, self.num_quantiles)
-        q2_values = self.q2(obs_seq, actions, self.num_quantiles)
+        q1_values = self.q1(obs_seq, actions)
+        q2_values = self.q2(obs_seq, actions)
 
         # Compute TQC loss using quantile Huber loss
         q1_loss = quantile_huber_loss(target_quantiles, q1_values, kappa)
         q2_loss = quantile_huber_loss(target_quantiles, q2_values, kappa)
 
         return q1_loss, q2_loss
+
+
 class MobileNetQuantileQFunction(nn.Module):
-    def __init__(self, obs_space, act_space, rnn_size=100, rnn_len=2, mlp_sizes=(128, 256, 256, 100), activation=nn.ReLU, num_classes=85):
+    def __init__(self, act_space, rnn_size=100, rnn_len=2, mlp_sizes=(128, 256, 256, 100),
+                 activation=nn.ReLU, num_classes=85, num_quantiles=3):
         super().__init__()
-     #   dim_obs = sum(np.prod(space.shape) for space in obs_space)
+        #   dim_obs = sum(np.prod(space.shape) for space in obs_space)
         dim_act = act_space.shape[0]
         self.mobilenetQ = mobilenetv3_small(num_classes=num_classes)
         self.gru = gru(43 + self.mobilenetQ.num_classes, rnn_size, rnn_len)
         self.bn_rnn = nn.BatchNorm1d(rnn_size)
-        self.mlp = mlp([rnn_size + dim_act] + list(mlp_sizes) + [1], activation)
+        self.mlp = mlp([rnn_size + dim_act] + list(mlp_sizes) + [num_quantiles], activation)
         self.h = None
         self.rnn_size = rnn_size
         self.rnn_len = rnn_len
@@ -323,53 +330,56 @@ class MobileNetQuantileQFunction(nn.Module):
 
         return torch.squeeze(q, -1)
 
+
 class QuantileActorCritic(nn.Module):
-    class TQCMobileNetActorCritic(nn.Module):
-        def __init__(
-                self, observation_space, action_space, rnn_size=100, rnn_len=4,
-                mlp_sizes=(128, 256, 256, 100), activation=nn.ReLU, num_classes=85
-        ):
-            super().__init__()
-            self.actor = TQCSquashedActorMobileNetV3(
-                observation_space, action_space, num_classes, rnn_size, rnn_len, mlp_sizes, activation, num_classes
-            )
-            self.q1 = TwinQuantileQFunction(
-                action_space, num_classes, rnn_size, rnn_len, mlp_sizes, activation, num_classes
-            )
-            self.q2 = TwinQuantileQFunction(
-                action_space, num_classes, rnn_size, rnn_len, mlp_sizes, activation, num_classes
-            )
-    def compute_quantile_targets(self, obs_seq, actions, rewards, next_obs_seq, dones, discount_factor):
-        with torch.no_grad():
-            next_actions, _ = self.actor.forward(next_obs_seq)
-            q1_targets_next = self.q1.forward(next_obs_seq, next_actions)
-            q2_targets_next = self.q2.forward(next_obs_seq, next_actions)
-            q_targets_next = torch.min(q1_targets_next, q2_targets_next)
-            quantile_rewards = rewards.unsqueeze(1) + discount_factor * (1 - dones.unsqueeze(1)) * q_targets_next
-        return quantile_rewards
-
-    def huber_loss(self, errors, kappa=1.0):
-        return torch.where(torch.abs(errors) <= kappa, 0.5 * errors ** 2, kappa * (torch.abs(errors) - 0.5 * kappa))
-
-    def update_quantile_q_functions(self, obs_seq, actions, quantile_targets, kappa=1.0):
-        q1_predictions = self.q1.forward(obs_seq, actions)
-        q2_predictions = self.q2.forward(obs_seq, actions)
-
-        quantile_errors1 = quantile_targets.unsqueeze(2) - q1_predictions.unsqueeze(1)
-        quantile_errors2 = quantile_targets.unsqueeze(2) - q2_predictions.unsqueeze(1)
-
-        huber_loss1 = self.huber_loss(quantile_errors1, kappa)
-        huber_loss2 = self.huber_loss(quantile_errors2, kappa)
-
-        q1_loss = huber_loss1.mean(dim=2).sum(dim=1).mean()
-        q2_loss = huber_loss2.mean(dim=2).sum(dim=1).mean()
-
-        self.q1_optimizer.zero_grad()
-        q1_loss.backward()
-        self.q1_optimizer.step()
-
-        self.q2_optimizer.zero_grad()
-        q2_loss.backward()
-        self.q2_optimizer.step()
-
-        return q1_loss.item(), q2_loss.item()
+    def __init__(
+            self, observation_space, action_space, rnn_size=100, rnn_len=2,
+            mlp_sizes=(128, 256, 256, 100), activation=nn.ReLU, num_classes=85, num_quantiles=3
+    ):
+        super().__init__()
+        self.actor = TQCSquashedActorMobileNetV3(
+            observation_space, action_space, rnn_size=rnn_size, rnn_len=rnn_len,
+            mlp_sizes=mlp_sizes, activation=activation, num_classes=num_classes
+        )
+        self.q1 = TwinQuantileQFunction(
+            action_space, num_quantiles=num_quantiles, rnn_size=rnn_size, rnn_len=rnn_len,
+            mlp_sizes=mlp_sizes, activation=activation, num_classes=num_classes
+        )
+        self.q2 = TwinQuantileQFunction(
+            action_space, num_quantiles=num_quantiles, rnn_size=rnn_size, rnn_len=rnn_len,
+            mlp_sizes=mlp_sizes, activation=activation, num_classes=num_classes
+        )
+# def compute_quantile_targets(self, obs_seq, actions, rewards, next_obs_seq, dones, discount_factor):
+#     with torch.no_grad():
+#         next_actions, _ = self.actor.forward(next_obs_seq)
+#         q1_targets_next = self.q1.forward(next_obs_seq, next_actions)
+#         q2_targets_next = self.q2.forward(next_obs_seq, next_actions)
+#         q_targets_next = torch.min(q1_targets_next, q2_targets_next)
+#         quantile_rewards = rewards.unsqueeze(1) + discount_factor * (1 - dones.unsqueeze(1)) * q_targets_next
+#     return quantile_rewards
+#
+# def huber_loss(self, errors, kappa=1.0):
+#     return torch.where(torch.abs(errors) <= kappa, 0.5 * errors ** 2, kappa * (torch.abs(errors) - 0.5 * kappa))
+#
+# def update_quantile_q_functions(self, obs_seq, actions, quantile_targets, kappa=1.0):
+#     q1_predictions = self.q1.forward(obs_seq, actions)
+#     q2_predictions = self.q2.forward(obs_seq, actions)
+#
+#     quantile_errors1 = quantile_targets.unsqueeze(2) - q1_predictions.unsqueeze(1)
+#     quantile_errors2 = quantile_targets.unsqueeze(2) - q2_predictions.unsqueeze(1)
+#
+#     huber_loss1 = self.huber_loss(quantile_errors1, kappa)
+#     huber_loss2 = self.huber_loss(quantile_errors2, kappa)
+#
+#     q1_loss = huber_loss1.mean(dim=2).sum(dim=1).mean()
+#     q2_loss = huber_loss2.mean(dim=2).sum(dim=1).mean()
+#
+#     self.q1_optimizer.zero_grad()
+#     q1_loss.backward()
+#     self.q1_optimizer.step()
+#
+#     self.q2_optimizer.zero_grad()
+#     q2_loss.backward()
+#     self.q2_optimizer.step()
+#
+#     return q1_loss.item(), q2_loss.item()

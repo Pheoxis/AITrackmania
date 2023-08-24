@@ -1,30 +1,23 @@
 # standard library imports
 import itertools
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
-from torch.nn import Module, Linear
-from torch.nn.functional import relu, logsigmoid
-from torch.distributions import Distribution, Normal
-import torch.optim as optim
-
-from custom.models.TQCActorCritic import QuantileActorCritic
-from models.RNNActorCritic import SquashedGaussianRNNActor
 
 # third-party imports
 import numpy as np
 import torch
-import wandb
 from torch.optim import Adam
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+import config.config_constants as cfg
+import wandb
 # local imports
 from custom.models import MLPActorCritic, REDQMLPActorCritic
+from custom.models.TQCActorCritic import QuantileActorCritic
 from custom.utils.nn import copy_shared, no_grad
-from util import cached_property
 from training import TrainingAgent
-import config.config_constants as cfg
+from util import cached_property
 
-import logging
 logging.basicConfig(level=logging.INFO)
 
 # Soft Actor-Critic ====================================================================================================
@@ -401,7 +394,7 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
         return ret_dict
 
 @dataclass(eq=False)
-class SpinupSacAgent(TrainingAgent):
+class TQCAgent(TrainingAgent):
     observation_space: type
     action_space: type
     device: str = None
@@ -414,6 +407,7 @@ class SpinupSacAgent(TrainingAgent):
     lr_entropy: float = 1e-3
     learn_entropy_coef: bool = True
     target_entropy: float = None
+    top_quantiles_to_drop: int = 5
 
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
@@ -421,7 +415,7 @@ class SpinupSacAgent(TrainingAgent):
         observation_space, action_space = self.observation_space, self.action_space
         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
         model = self.model_cls(observation_space, action_space)  # Use TQCActorCritic
-        logging.debug(f" device SAC: {device}")
+        logging.debug(f" device TQC: {device}")
         self.model = model.to(device)
         self.model_target = no_grad(deepcopy(self.model))
 
@@ -444,26 +438,35 @@ class SpinupSacAgent(TrainingAgent):
     def get_actor(self):
         return self.model_nograd.actor
 
-    def train(self, batch, replay_buffer):
+    def train(self, batch):
         o, a, r, o2, d, _ = batch
 
         pi, logp_pi = self.model.actor(o)
+
+        # loss_alpha:
+
+        loss_alpha = None
+        if self.learn_entropy_coef:
+            # Important: detach the variable from the graph
+            # so we don't change it with other losses
+            # see https://github.com/rail-berkeley/softlearning/issues/60
+            alpha_t = torch.exp(self.log_alpha.detach())
+            loss_alpha = -(self.log_alpha * (logp_pi + self.target_entropy).detach()).mean()
+        else:
+            alpha_t = self.alpha_t
+
+        # Optimize entropy coefficient, also called
+        # entropy temperature or alpha in the paper
+        if loss_alpha is not None:
+            self.alpha_optimizer.zero_grad()
+            loss_alpha.backward()
+            self.alpha_optimizer.step()
 
 
         quantile_targets = self.compute_quantile_targets(o2, a, r, o2, d, self.gamma)
         q1_loss, q2_loss = self.update_quantile_q_functions(o, a, quantile_targets)
 
-        state, action, next_state, reward, not_done = replay_buffer.sample(batch)
         alpha = torch.exp(self.log_alpha)
-
-        loss_alpha = None
-
-        if self.learn_entropy_coef:
-            # Compute alpha and its loss
-            alpha_t = torch.exp(self.log_alpha.detach())
-            loss_alpha = -(self.log_alpha * (logp_pi + self.target_entropy).detach()).mean()
-        else:
-            alpha_t = self.alpha_t
 
         q1_pi = self.model.q1(o, pi)
         q2_pi = self.model.q2(o, pi)
@@ -471,20 +474,20 @@ class SpinupSacAgent(TrainingAgent):
         loss_pi = (alpha_t * logp_pi - q_pi).mean()
 
         with torch.no_grad():
-            new_next_action, next_log_pi = self.get_actor()(next_state)
+            new_next_action, next_log_pi = self.get_actor()(o2)
             # Compute and cut quantiles at the next state
-            next_z = self.model_target.critic(next_state, new_next_action)
+            next_z = self.model_target.critic(o2, new_next_action)
             sorted_z, _ = torch.sort(next_z.reshape(batch, -1))
             sorted_z_part = sorted_z[:, :self.quantiles_total - self.top_quantiles_to_drop]
             # Compute target
-            target = reward + not_done * self.gamma * (sorted_z_part - alpha * next_log_pi)
+            target = r + d * self.gamma * (sorted_z_part - alpha * next_log_pi)
 
-        cur_z = self.model.critic(state, action)
+        cur_z = self.model.critic(o, a)
         critic_loss = self.quantile_huber_loss_f(cur_z, target)
 
-        new_action, log_pi = self.get_actor()(state)
-        alpha_loss = -self.log_alpha * (log_pi + self.target_entropy).detach().mean()
-        actor_loss = (alpha * log_pi - self.model.critic(state, new_action).mean(2).mean(1, keepdim=True)).mean()
+        new_action, log_pi = self.get_actor()(o)
+        #alpha_loss = -self.log_alpha * (log_pi + self.target_entropy).detach().mean()
+        actor_loss = (alpha * log_pi - self.model.critic(o, new_action).mean(2).mean(1, keepdim=True)).mean()
 
         self.q_optimizer.zero_grad()
         critic_loss.backward()
@@ -499,9 +502,9 @@ class SpinupSacAgent(TrainingAgent):
 
         ret_dict = {
             "loss_actor": loss_pi.detach(),
-        "loss_critic": (q1_loss + q2_loss) / 2,  # or any other relevant critic loss
-        "loss_alpha": loss_alpha.detach() if self.learn_entropy_coef else None,
-        "alpha": alpha_t.item(),
+            "loss_critic": (q1_loss + q2_loss) / 2,  # or any other relevant critic loss
+            "loss_alpha": loss_alpha.detach() if self.learn_entropy_coef else None,
+            "alpha": alpha_t.item(),
         }
 
         if self.learn_entropy_coef:

@@ -14,7 +14,7 @@ from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
 from custom.models.MobileNetActorCritic import MobileNetActorCritic, SquashedActorMobileNetV3
-from custom.models.TQCActorCritic import QuantileActorCritic
+from custom.models.TQCActorCritic import QuantileActorCritic, TQCSquashedActorMobileNetV3
 from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
 from custom.models.VanillaColorCNNActorCritic import VanillaColorCNNActorCritic, SquashedGaussianVanillaColorCNNActor
 from training_offline import TorchTrainingOffline
@@ -32,7 +32,7 @@ from util import partial
 
 ALG_CONFIG = cfg.TMRL_CONFIG["ALG"]
 ALG_NAME = ALG_CONFIG["ALGORITHM"]
-assert ALG_NAME in ["SAC", "REDQSAC"], f"If you wish to implement {ALG_NAME}, do not use 'ALG' in config.json for that."
+assert ALG_NAME in ["SAC", "REDQSAC","TQC"], f"If you wish to implement {ALG_NAME}, do not use 'ALG' in config.json for that."
 
 # MODEL, GYM ENVIRONMENT, REPLAY MEMORY AND TRAINING: ===========
 
@@ -49,10 +49,10 @@ else:
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
         TRAIN_MODEL = MobileNetActorCritic
         POLICY = SquashedActorMobileNetV3
-    elif  cfg.PRAGMA_TQC:
+    elif cfg.PRAGMA_TQC:
         assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
         TRAIN_MODEL = QuantileActorCritic
-        POLICY = SquashedActorMobileNetV3
+        POLICY = TQCSquashedActorMobileNetV3
     else:
         assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
@@ -67,7 +67,7 @@ if cfg.PRAGMA_LIDAR:
     else:
         INT = partial(TM2020InterfaceLidar, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
 else:
-    if cfg.PRAGMA_CUSTOM:
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_TQC:
         INT = partial(
             TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
             grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
@@ -123,7 +123,7 @@ if cfg.PRAGMA_LIDAR:
         else:
             MEM = MemoryTMLidar
 else:
-    if cfg.PRAGMA_CUSTOM:
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_TQC:
         MEM = MemoryTMMobileNet
     else:
         MEM = MemoryTMFull
