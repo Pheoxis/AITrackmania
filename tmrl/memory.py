@@ -70,6 +70,7 @@ class Memory(ABC):
         self.stat_train_return = 0.0
         self.stat_test_steps = 0
         self.stat_train_steps = 0
+        self.average_reward = 0
 
         # init memory
         self.path = Path(dataset_path)
@@ -161,6 +162,7 @@ class Memory(ABC):
             self.stat_test_return = buffer.stat_test_return
             self.stat_train_steps = buffer.stat_train_steps
             self.stat_test_steps = buffer.stat_test_steps
+            self.average_reward = 0
             self.append_buffer(buffer)
 
     def __getitem__(self, item):

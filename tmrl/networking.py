@@ -284,7 +284,7 @@ def iterate_epochs_tm(run_cls,
 
 
 def run_with_wandb(entity, project, run_id, interface, run_cls, checkpoint_path: str = None, dump_run_instance_fn=None,
-                   load_run_instance_fn=None, updater_fn=None, watch_gradients: bool = True):
+                   load_run_instance_fn=None, updater_fn=None):
     """
     Main training loop (remote).
 
@@ -314,8 +314,6 @@ def run_with_wandb(entity, project, run_id, interface, run_cls, checkpoint_path:
                 exit()
             else:
                 time.sleep(10.0)
-    if watch_gradients:
-        wandb.watch(cfg_obj.POLICY)
     # logging.info(config)
     for stats in iterate_epochs_tm(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, 1, updater_fn):
         [wandb.log(json.loads(s.to_json())) for s in stats]
@@ -428,8 +426,7 @@ class Trainer:
                        checkpoint_path=self.checkpoint_path,
                        dump_run_instance_fn=self.dump_run_instance_fn,
                        load_run_instance_fn=self.load_run_instance_fn,
-                       updater_fn=self.updater_fn,
-                       watch_gradients=cfg.WANDB_GRADIENTS)
+                       updater_fn=self.updater_fn)
 
 
 # ROLLOUT WORKER: ===================================
