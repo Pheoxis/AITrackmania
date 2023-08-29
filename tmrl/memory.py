@@ -1,11 +1,13 @@
 # standard library imports
 import os
 import pickle
+import random
 import zlib
 from abc import ABC, abstractmethod
 from pathlib import Path
 from random import randint
 import logging
+import config.config_constants as cfg
 logging.basicConfig(level=logging.INFO)
 
 # third-party imports
@@ -86,6 +88,7 @@ class Memory(ABC):
             # TODO: crop to memory_size
             # self.data = self.data[-self.memory_size:]
             logging.warning(f"the dataset length ({len(self)}) is longer than memory_size ({self.memory_size})")
+        # random.seed(cfg.SEED)
 
     def __iter__(self):
         for _ in range(self.nb_steps):
@@ -162,7 +165,6 @@ class Memory(ABC):
             self.stat_test_return = buffer.stat_test_return
             self.stat_train_steps = buffer.stat_train_steps
             self.stat_test_steps = buffer.stat_test_steps
-            self.average_reward = 0
             self.append_buffer(buffer)
 
     def __getitem__(self, item):

@@ -1,10 +1,15 @@
 # standard library imports
+import atexit
 import os
 import pickle
+import shutil
+import tempfile
+import time
 
 # third-party imports
 import numpy as np
 import logging
+from config import config_constants as cfg
 
 import wandb
 
@@ -18,8 +23,8 @@ class RewardFunction:
 
     def __init__(self,
                  reward_data_path,
-                 nb_obs_forward=8,
-                 nb_obs_backward=8,
+                 nb_obs_forward=15,
+                 nb_obs_backward=15,
                  nb_zero_rew_before_failure=12,
                  min_nb_steps_before_failure=int(3.5 * 20),
                  max_dist_from_traj=60.0,
@@ -52,14 +57,31 @@ class RewardFunction:
         self.step_counter = 0
         self.failure_counter = 0
         self.datalen = len(self.data)
-        self.survive_reward = 0.5
+        # self.survive_reward = 0.5
         self.crash_penalty = crash_penalty
         self.crash_counter = 1
         self.constant_penalty = constant_penalty
-        self.gas_reward = 0.0001
-        self.brake_penalty = -0.0002
-        self.counter = 0
+        # self.gas_reward = 0.0001
+        # self.brake_penalty = -0.0002
+        # self.counter = 0
         self.reward_sum = 0.0
+        # self.reward_sum_list = []
+        wandb_dir = tempfile.mkdtemp()  # prevent wandb from polluting the home directory
+        atexit.register(shutil.rmtree, wandb_dir, ignore_errors=True)  # clean up after wandb atexit handler finishes
+        wandb_initialized = False
+        err_cpt = 0
+        while not wandb_initialized:
+            try:
+                wandb.init(project=cfg.WANDB_PROJECT, entity=cfg.WANDB_ENTITY, id=cfg.WANDB_RUN_ID+"_rewards")
+                wandb_initialized = True
+            except Exception as e:
+                err_cpt += 1
+                logging.warning(f"wandb error {err_cpt}: {e}")
+                if err_cpt > 10:
+                    logging.warning(f"Could not connect to wandb, aborting.")
+                    exit()
+                else:
+                    time.sleep(10.0)
         # self.tmp_counter = 0
         # self.traj = []
 
@@ -115,8 +137,11 @@ class RewardFunction:
 
         self.reward_sum += reward
         if terminated:
-            self.counter += 1
+            # self.counter += 1
             print(f"Total reward of the run: {self.reward_sum}")
+            if self.reward_sum != 0.0:
+                # self.reward_sum_list.append(self.reward_sum)
+                wandb.log({"Run reward": self.reward_sum})
             # logging.info(f"Total reward of the run: {self.reward_sum}")
             # if self.counter % 2 == 0:
             #     self.min_nb_steps_before_failure += 2

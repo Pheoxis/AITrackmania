@@ -91,9 +91,9 @@ def update_run_instance(run_instance, training_cls):
     # update training Agent:
     ALG_CONFIG = cfg.TMRL_CONFIG["ALG"]
     ALG_NAME = ALG_CONFIG["ALGORITHM"]
-    assert ALG_NAME in ["SAC", "REDQSAC"], f"{ALG_NAME} is not supported by this checkpoint updater."
+    assert ALG_NAME in ["SAC", "REDQSAC", "TQC"], f"{ALG_NAME} is not supported by this checkpoint updater."
 
-    if ALG_NAME in ["SAC", "REDQSAC"]:
+    if ALG_NAME in ["SAC", "REDQSAC", "TQC"]:
         lr_actor = ALG_CONFIG["LR_ACTOR"]
         lr_critic = ALG_CONFIG["LR_CRITIC"]
         lr_entropy = ALG_CONFIG["LR_ENTROPY"]
@@ -103,17 +103,18 @@ def update_run_instance(run_instance, training_cls):
         target_entropy = ALG_CONFIG["TARGET_ENTROPY"]
         alpha = ALG_CONFIG["ALPHA"]
 
-        if ALG_NAME == "SAC":
+
+        if ALG_NAME in ("SAC", "TQC"):
             if run_instance.agent.lr_actor != lr_actor:
                 old = run_instance.agent.lr_actor
                 run_instance.agent.lr_actor = lr_actor
-                run_instance.agent.pi_optimizer = Adam(run_instance.agent.model.actor.parameters(), lr=lr_actor)
+                run_instance.agent.actor_optimizer = Adam(run_instance.agent.model.actor.parameters(), lr=lr_actor)
                 logging.info(f"Actor optimizer reinitialized with new lr: {lr_actor} (old lr: {old}).")
 
             if run_instance.agent.lr_critic != lr_critic:
                 old = run_instance.agent.lr_critic
                 run_instance.agent.lr_critic = lr_critic
-                run_instance.agent.q_optimizer = Adam(
+                run_instance.agent.critic_optimizer = Adam(
                     itertools.chain(run_instance.agent.model.q1.parameters(), run_instance.agent.model.q2.parameters()),
                     lr=lr_critic)
                 logging.info(f"Critic optimizer reinitialized with new lr: {lr_critic} (old lr: {old}).")
