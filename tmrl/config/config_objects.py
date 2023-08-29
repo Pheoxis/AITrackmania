@@ -10,6 +10,8 @@ from custom.interfaces.TM2020InterfaceLidar import TM2020InterfaceLidar
 from custom.interfaces.TM2020InterfaceLidarProgress import TM2020InterfaceLidarProgress
 from custom.interfaces.TM2020InterfaceTrackMap import TM2020InterfaceTrackMap
 from custom.interfaces.TM2020InterfaceCustom import TM2020InterfaceCustom
+from custom.models.BestActorCritic import RCNNActorCritic, SquashedActorRCNN
+from custom.models.BestActorCriticTQC import QRCNNActorCritic, SquashedActorQRCNN
 from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
@@ -18,19 +20,20 @@ from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedG
 from custom.models.VanillaColorCNNActorCritic import VanillaColorCNNActorCritic, SquashedGaussianVanillaColorCNNActor
 from training_offline import TorchTrainingOffline
 from custom.custom_memories import MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, \
-    get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs, MemoryTMMobileNet, \
+    get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs, MemoryTMBest, \
     get_local_buffer_sample_mobilenet, MemoryTMFull
 from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
     obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
 from envs import GenericGymEnv
 from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
 from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
+from custom.custom_algorithms import TQCAgent as TQC_Agent
 from custom.custom_checkpoints import update_run_instance
 from util import partial
 
 ALG_CONFIG = cfg.TMRL_CONFIG["ALG"]
 ALG_NAME = ALG_CONFIG["ALGORITHM"]
-assert ALG_NAME in ["SAC", "REDQSAC"], f"If you wish to implement {ALG_NAME}, do not use 'ALG' in config.json for that."
+assert ALG_NAME in ["SAC", "REDQSAC", "TQC"], f"If you wish to implement {ALG_NAME}, do not use 'ALG' in config.json for that."
 
 # MODEL, GYM ENVIRONMENT, REPLAY MEMORY AND TRAINING: ===========
 
@@ -47,6 +50,14 @@ else:
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
         TRAIN_MODEL = MobileNetActorCritic
         POLICY = SquashedActorMobileNetV3
+    elif cfg.PRAGMA_BEST:
+        assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
+        TRAIN_MODEL = RCNNActorCritic
+        POLICY = SquashedActorRCNN
+    elif cfg.PRAGMA_BEST_TQC:
+        assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
+        TRAIN_MODEL = QRCNNActorCritic
+        POLICY = SquashedActorQRCNN
     else:
         assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
@@ -61,7 +72,7 @@ if cfg.PRAGMA_LIDAR:
     else:
         INT = partial(TM2020InterfaceLidar, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
 else:
-    if cfg.PRAGMA_CUSTOM:
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
         INT = partial(
             TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
             grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
@@ -87,7 +98,7 @@ if cfg.PRAGMA_LIDAR:
     else:
         SAMPLE_COMPRESSOR = get_local_buffer_sample_lidar
 else:
-    if cfg.PRAGMA_CUSTOM:
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
         SAMPLE_COMPRESSOR = get_local_buffer_sample_mobilenet
     else:
         SAMPLE_COMPRESSOR = get_local_buffer_sample_tm20_imgs
@@ -99,7 +110,7 @@ if cfg.PRAGMA_LIDAR:
     else:
         OBS_PREPROCESSOR = obs_preprocessor_tm_lidar_act_in_obs
 else:
-    if cfg.PRAGMA_CUSTOM:
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
         OBS_PREPROCESSOR = obs_preprocessor_mobilenet_act_in_obs
     else:
         OBS_PREPROCESSOR = obs_preprocessor_tm_act_in_obs
@@ -117,8 +128,8 @@ if cfg.PRAGMA_LIDAR:
         else:
             MEM = MemoryTMLidar
 else:
-    if cfg.PRAGMA_CUSTOM:
-        MEM = MemoryTMMobileNet
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
+        MEM = MemoryTMBest
     else:
         MEM = MemoryTMFull
 
@@ -147,6 +158,21 @@ if ALG_NAME == "SAC":
         learn_entropy_coef=ALG_CONFIG["LEARN_ENTROPY_COEF"],  # False for SAC v2 with no temperature autotuning
         target_entropy=ALG_CONFIG["TARGET_ENTROPY"],  # None for automatic
         alpha=ALG_CONFIG["ALPHA"]  # inverse of reward scale
+    )
+elif ALG_NAME == "TQC":
+    AGENT = partial(
+        TQC_Agent,
+        device='cuda' if cfg.CUDA_TRAINING else 'cpu',
+        model_cls=TRAIN_MODEL,
+        lr_actor=ALG_CONFIG["LR_ACTOR"],
+        lr_critic=ALG_CONFIG["LR_CRITIC"],
+        lr_entropy=ALG_CONFIG["LR_ENTROPY"],
+        gamma=ALG_CONFIG["GAMMA"],
+        polyak=ALG_CONFIG["POLYAK"],
+        learn_entropy_coef=ALG_CONFIG["LEARN_ENTROPY_COEF"],  # False for SAC v2 with no temperature autotuning
+        target_entropy=ALG_CONFIG["TARGET_ENTROPY"],  # None for automatic
+        alpha=ALG_CONFIG["ALPHA"],  # inverse of reward scale
+        top_quantiles_to_drop=ALG_CONFIG["TOP_QUANTILES_TO_DROP"]
     )
 else:
     AGENT = partial(
@@ -216,4 +242,4 @@ else:  # images
 
 DUMP_RUN_INSTANCE_FN = None if cfg.PRAGMA_LIDAR else None  # dump_run_instance_images_dataset
 LOAD_RUN_INSTANCE_FN = None if cfg.PRAGMA_LIDAR else None  # load_run_instance_images_dataset
-UPDATER_FN = update_run_instance if ALG_NAME in ["SAC", "REDQSAC"] else None
+UPDATER_FN = update_run_instance if ALG_NAME in ["SAC", "REDQSAC", "TQC"] else None
