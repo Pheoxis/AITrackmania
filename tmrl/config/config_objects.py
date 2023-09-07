@@ -11,7 +11,8 @@ from custom.interfaces.TM2020InterfaceLidarProgress import TM2020InterfaceLidarP
 from custom.interfaces.TM2020InterfaceTrackMap import TM2020InterfaceTrackMap
 from custom.interfaces.TM2020InterfaceCustom import TM2020InterfaceCustom
 from custom.models.BestActorCritic import RCNNActorCritic, SquashedActorRCNN
-from custom.models.BestActorCriticTQC import QRCNNActorCritic, SquashedActorQRCNN
+import custom.models.BestActorCriticTQC as tqc
+import custom.models.MaybeBetterTQC as mtqc
 from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
@@ -56,8 +57,12 @@ else:
         POLICY = SquashedActorRCNN
     elif cfg.PRAGMA_BEST_TQC:
         assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = QRCNNActorCritic
-        POLICY = SquashedActorQRCNN
+        TRAIN_MODEL = tqc.QRCNNActorCritic
+        POLICY = tqc.SquashedActorQRCNN
+    elif cfg.PRAGMA_MBEST_TQC:
+        assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
+        TRAIN_MODEL = mtqc.QRCNNActorCritic
+        POLICY = mtqc.SquashedActorQRCNN
     else:
         assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
@@ -72,7 +77,7 @@ if cfg.PRAGMA_LIDAR:
     else:
         INT = partial(TM2020InterfaceLidar, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
 else:
-    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC or cfg.PRAGMA_MBEST_TQC:
         INT = partial(
             TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
             grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
@@ -98,7 +103,7 @@ if cfg.PRAGMA_LIDAR:
     else:
         SAMPLE_COMPRESSOR = get_local_buffer_sample_lidar
 else:
-    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC or cfg.PRAGMA_MBEST_TQC:
         SAMPLE_COMPRESSOR = get_local_buffer_sample_mobilenet
     else:
         SAMPLE_COMPRESSOR = get_local_buffer_sample_tm20_imgs
@@ -110,7 +115,7 @@ if cfg.PRAGMA_LIDAR:
     else:
         OBS_PREPROCESSOR = obs_preprocessor_tm_lidar_act_in_obs
 else:
-    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC or cfg.PRAGMA_MBEST_TQC:
         OBS_PREPROCESSOR = obs_preprocessor_mobilenet_act_in_obs
     else:
         OBS_PREPROCESSOR = obs_preprocessor_tm_act_in_obs
@@ -128,7 +133,7 @@ if cfg.PRAGMA_LIDAR:
         else:
             MEM = MemoryTMLidar
 else:
-    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC or cfg.PRAGMA_MBEST_TQC:
         MEM = MemoryTMBest
     else:
         MEM = MemoryTMFull
@@ -172,7 +177,8 @@ elif ALG_NAME == "TQC":
         learn_entropy_coef=ALG_CONFIG["LEARN_ENTROPY_COEF"],  # False for SAC v2 with no temperature autotuning
         target_entropy=ALG_CONFIG["TARGET_ENTROPY"],  # None for automatic
         alpha=ALG_CONFIG["ALPHA"],  # inverse of reward scale
-        top_quantiles_to_drop=ALG_CONFIG["TOP_QUANTILES_TO_DROP"]
+        top_quantiles_to_drop=ALG_CONFIG["TOP_QUANTILES_TO_DROP"],
+        quantiles_number=ALG_CONFIG["QUANTILES_NUMBER"]
     )
 else:
     AGENT = partial(

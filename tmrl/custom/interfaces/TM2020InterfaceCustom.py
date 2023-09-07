@@ -177,11 +177,12 @@ class TM2020InterfaceCustom(TM2020Interface):
             if self.save_replays:
                 mouse_save_replay_tm20(True)
         else:
-            rew, terminated, failure_counter = self.reward_function.compute_reward(
+            rew, terminated, failure_counter, race_progress = self.reward_function.compute_reward(
                 pos=np.array([data[2], data[3], data[4]]),  # position x,y,z
                 crashed=bool(crashed), gas_input=bool(input_gas_pedal), brake_input=bool(input_brake),
                 speed=speed[0]
             )
+            race_progress = np.array([race_progress], dtype='float32')
             reward += rew
 
         failure_counter = float(failure_counter)
