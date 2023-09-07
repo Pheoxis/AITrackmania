@@ -45,27 +45,6 @@ def lstm(input_size, rnn_size, rnn_len):
 
     return lstm_layers
 
-
-# ... (other imports and definitions remain the same)
-def rnn(input_size, rnn_size, rnn_len):
-    num_rnn_layers = rnn_len
-    assert num_rnn_layers >= 1
-    hidden_size = rnn_size
-
-    gru = nn.GRU(
-        input_size=input_size, hidden_size=hidden_size, num_layers=num_rnn_layers,
-        bias=True, batch_first=True, dropout=0, bidirectional=False
-    )
-    return gru
-
-
-# def mlp(sizes, activation=nn.ReLU, output_activation=None):
-#     layers = []
-#     for i in range(len(sizes) - 1):
-#         act = activation if i < len(sizes) - 2 else output_activation
-#         layers += [nn.Linear(sizes[i], sizes[i + 1]), act()]
-#     return nn.Sequential(*layers)
-
 def quantile_huber_loss(y_pred, y_target, kappa):
     # Compute element-wise Huber loss for quantile regression
     u = y_target - y_pred
