@@ -11,3 +11,6 @@ setuptools>=58.1.0
 requests>=2.28.1
 tlspyo>=0.2.5
 wandb>=0.15.5
+torchvision~=0.15.2+cu118
+torchviz~=0.0.2
+torchrl~=0.1.1

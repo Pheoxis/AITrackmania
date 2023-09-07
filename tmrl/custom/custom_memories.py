@@ -393,7 +393,12 @@ class MemoryTMFull(MemoryTM):
             replace_hist_before_eoe(hist=imgs_last_obs, eoe_idx_in_hist=last_eoe_idx - self.start_imgs_offset)
 
         last_obs = (
-            self.data[2][idx_last], self.data[7][idx_last], self.data[8][idx_last], imgs_last_obs, *last_act_buf)
+            self.data[2][idx_last],
+            self.data[7][idx_last],
+            self.data[8][idx_last],
+            imgs_last_obs,
+            *last_act_buf
+        )
         new_act = self.data[1][idx_now]
         rew = np.float32(self.data[5][idx_now])
         new_obs = (self.data[2][idx_now], self.data[7][idx_now], self.data[8][idx_now], imgs_new_obs, *new_act_buf)
@@ -474,7 +479,7 @@ class MemoryTMFull(MemoryTM):
 
 # ============= custom mobilenet memory ==============
 
-class MemoryTMMobileNet(MemoryTM):
+class MemoryTMBest(MemoryTM):
 
     def get_transition(self, item):
         """
@@ -497,7 +502,7 @@ class MemoryTMMobileNet(MemoryTM):
         imgs_new_obs = imgs[1:]
 
         # if a reset transition has influenced the observation, special care must be taken
-        last_eoes = self.data[26][idx_now - self.min_samples:idx_now]  # self.min_samples values
+        last_eoes = self.data[27][idx_now - self.min_samples:idx_now]  # self.min_samples values
         last_eoe_idx = last_true_in_list(last_eoes)  # last occurrence of True
 
         assert last_eoe_idx is None or last_eoes[last_eoe_idx], f"last_eoe_idx:{last_eoe_idx}"
@@ -532,11 +537,12 @@ class MemoryTMMobileNet(MemoryTM):
             self.data[22][idx_last],  # 20
             self.data[23][idx_last],  # 21
             self.data[24][idx_last],  # 22
-            self.data[25][idx_last],  # 23 imgs
+            self.data[25][idx_last],  # 23
+            self.data[26][idx_last],  # 24 imgs
             # imgs_last_obs,
             *last_act_buf)
         new_act = self.data[1][idx_now]
-        rew = np.float32(self.data[27][idx_now])
+        rew = np.float32(self.data[28][idx_now])
         new_obs = (
             self.data[2][idx_now],  # 0
             self.data[3][idx_now],  # 1
@@ -561,16 +567,17 @@ class MemoryTMMobileNet(MemoryTM):
             self.data[22][idx_now],  # 20
             self.data[23][idx_now],  # 21
             self.data[24][idx_now],  # 22
-            self.data[25][idx_now],  # 23 imgs
+            self.data[25][idx_now],  # 23
+            self.data[26][idx_now],  # 24 imgs
             # imgs_new_obs,
             *new_act_buf)
-        terminated = self.data[29][idx_now]
-        truncated = self.data[30][idx_now]
-        info = self.data[28][idx_now]
+        terminated = self.data[30][idx_now]
+        truncated = self.data[31][idx_now]
+        info = self.data[29][idx_now]
         return last_obs, new_act, rew, new_obs, terminated, truncated, info
 
     def load_imgs(self, item):
-        res = self.data[25][(item + self.start_imgs_offset):(item + self.start_imgs_offset + self.imgs_obs + 1)]
+        res = self.data[26][(item + self.start_imgs_offset):(item + self.start_imgs_offset + self.imgs_obs + 1)]
         return np.stack(res).astype(np.float32) / 256.0
 
     def load_acts(self, item):
@@ -590,36 +597,38 @@ class MemoryTMMobileNet(MemoryTM):
 
         d0 = [first_data_idx + i for i, _ in enumerate(buffer.memory)]  # indexes
         d1 = [b[0] for b in buffer.memory]  # actions
-        d2 = [np.array([b[1][0]]) for b in buffer.memory]  # speeds
-        d3 = [np.array([b[1][1]]) for b in buffer.memory]  # acceleration
-        d4 = [np.array([b[1][2]]) for b in buffer.memory]  # jerk
-        d5 = [np.array([b[1][3]]) for b in buffer.memory]  # race_progress
-        d6 = [np.array([b[1][4]]) for b in buffer.memory]  # input_steer
-        d7 = [np.array([b[1][5]]) for b in buffer.memory]  # input_gas_pedal
-        d8 = [np.array([b[1][6]]) for b in buffer.memory]  # input_brake
-        d9 = [np.array([b[1][7]]) for b in buffer.memory]  # gear
-        d10 = [np.array([b[1][8]]) for b in buffer.memory]  # rpm
-        d11 = [np.array([b[1][9]]) for b in buffer.memory]  # aim_yaw
-        d12 = [np.array([b[1][10]]) for b in buffer.memory]  # aim_pitch
-        d13 = [np.array([b[1][11][0]]) for b in buffer.memory]  # surface_id
-        d14 = [np.array([b[1][12][0]]) for b in buffer.memory]  # steer_angle
-        d15 = [np.array([b[1][13][0]]) for b in buffer.memory]  # wheel_rot
-        d16 = [np.array([b[1][14][0]]) for b in buffer.memory]  # wheel_rot_speed
-        d17 = [np.array(b[1][15]) for b in buffer.memory]  # damper_len
-        d18 = [np.array(b[1][16]) for b in buffer.memory]  # slip_coef
-        d19 = [np.array([b[1][17]]) for b in buffer.memory]  # reactor_ground_mode
-        d20 = [np.array([b[1][18]]) for b in buffer.memory]  # ground_contact
-        d21 = [np.array(b[1][19]) for b in buffer.memory]  # reactor_air_control
-        d22 = [np.array([b[1][20]]) for b in buffer.memory]  # ground_dist
-        d23 = [b[1][21].tolist() for b in buffer.memory]  # crashed
-        d23 = [np.array([el]) for el in d23]
-        d24 = [np.array([b[1][22]]) for b in buffer.memory]  # failure counter
-        d25 = [b[1][23] for b in buffer.memory]  # imgs
-        d26 = [b[3] or b[4] for b in buffer.memory]  # eoes (end of episode)
-        d27 = [b[2] for b in buffer.memory]  # rewards
-        d28 = [b[5] for b in buffer.memory]  # infos
-        d29 = [b[3] for b in buffer.memory]  # terminated
-        d30 = [b[4] for b in buffer.memory]  # truncated
+        d2 = [np.array([b[1][0]]) for b in buffer.memory]       # positions
+        d3 = [np.array([b[1][1]]) for b in buffer.memory]       # speeds
+        d4 = [np.array([b[1][2]]) for b in buffer.memory]       # acceleration
+        d5 = [np.array([b[1][3]]) for b in buffer.memory]       # jerk
+        d6 = [np.array([b[1][4]]) for b in buffer.memory]       # race_progress
+        d7 = [np.array([b[1][5]]) for b in buffer.memory]       # input_steer
+        d8 = [np.array([b[1][6]]) for b in buffer.memory]       # input_gas_pedal
+        d9 = [np.array([b[1][7]]) for b in buffer.memory]       # input_brake
+        d10 = [np.array([b[1][8]]) for b in buffer.memory]       # gear
+        d11 = [np.array([b[1][9]]) for b in buffer.memory]      # rpm
+        d12 = [np.array([b[1][10]]) for b in buffer.memory]      # aim_yaw
+        d13 = [np.array([b[1][11]]) for b in buffer.memory]     # aim_pitch
+        d14 = [np.array([b[1][12][0]]) for b in buffer.memory]  # surface_id
+        d15 = [np.array([b[1][13][0]]) for b in buffer.memory]  # steer_angle
+        d16 = [np.array([b[1][14][0]]) for b in buffer.memory]  # wheel_rot
+        d17 = [np.array([b[1][15][0]]) for b in buffer.memory]  # wheel_rot_speed
+        d18 = [np.array(b[1][16]) for b in buffer.memory]       # damper_len
+        d19 = [np.array(b[1][17]) for b in buffer.memory]       # slip_coef
+        d20 = [np.array([b[1][18]]) for b in buffer.memory]     # reactor_ground_mode
+        d21 = [np.array([b[1][19]]) for b in buffer.memory]     # ground_contact
+        d22 = [np.array(b[1][20]) for b in buffer.memory]       # reactor_air_control
+        d23 = [np.array([b[1][21]]) for b in buffer.memory]     # ground_dist
+        d24 = [b[1][22].tolist() for b in buffer.memory]        # crashed
+        d24 = [np.array([el]) for el in d24]
+        d25 = [np.array([b[1][23]]) for b in buffer.memory]     # failure counter
+        d26 = [b[1][24] for b in buffer.memory]                 # imgs
+
+        d27 = [b[3] or b[4] for b in buffer.memory]             # eoes (end of episode)
+        d28 = [b[2] for b in buffer.memory]                     # rewards
+        d29 = [b[5] for b in buffer.memory]                     # infos
+        d30 = [b[3] for b in buffer.memory]                     # terminated
+        d31 = [b[4] for b in buffer.memory]                     # truncated
 
         if self.__len__() > 0:
             self.data[0] += d0
@@ -653,6 +662,7 @@ class MemoryTMMobileNet(MemoryTM):
             self.data[28] += d28
             self.data[29] += d29
             self.data[30] += d30
+            self.data[31] += d31
 
         else:
             self.data.append(d0)
@@ -686,6 +696,7 @@ class MemoryTMMobileNet(MemoryTM):
             self.data.append(d28)
             self.data.append(d29)
             self.data.append(d30)
+            self.data.append(d31)
 
         to_trim = self.__len__() - self.memory_size
         if to_trim > 0:
@@ -720,5 +731,6 @@ class MemoryTMMobileNet(MemoryTM):
             self.data[28] = self.data[28][to_trim:]
             self.data[29] = self.data[29][to_trim:]
             self.data[30] = self.data[30][to_trim:]
+            self.data[31] = self.data[31][to_trim:]
 
         return self

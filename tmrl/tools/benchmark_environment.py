@@ -34,7 +34,7 @@ def benchmark():
         act = action_space.sample()
         time.sleep(random.uniform(ACT_COMPUTE_MIN, ACT_COMPUTE_MAX))
         # o, r, d, t, i = env.step(act)
-        o, r, d, t, i = env.step(None)
+        o, r, d, t, i, s_r = env.step(None)
         if d or t:
             env.reset()
         logging.info(f"rew:{r}")

@@ -8,6 +8,7 @@ from zipfile import ZipFile
 import urllib.request
 import urllib.error
 import socket
+import config.config_constants as cfg
 
 if sys.version_info < (3, 7):
     sys.exit('Sorry, Python < 3.7 is not supported. We use dataclasses that have been introduced in 3.7.')
@@ -62,7 +63,7 @@ if not TMRL_FOLDER.exists():
     # copy relevant files:
     RESOURCES_FOLDER = TMRL_FOLDER / "resources"
     copy2(RESOURCES_FOLDER / "config.json", CONFIG_FOLDER)
-    copy2(RESOURCES_FOLDER / "reward.pkl", REWARD_FOLDER)
+    copy2(RESOURCES_FOLDER / str("reward_" + cfg.MAP_NAME + ".pkl"), REWARD_FOLDER)
     copy2(RESOURCES_FOLDER / "SAC_4_LIDAR_pretrained.tmod", WEIGHTS_FOLDER)
     copy2(RESOURCES_FOLDER / "SAC_4_imgs_pretrained.tmod", WEIGHTS_FOLDER)
 

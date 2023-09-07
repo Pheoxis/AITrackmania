@@ -34,6 +34,8 @@ class TM2020InterfaceCustom(TM2020Interface):
             Note: Do NOT put the action buffer here (automated).
         """
 
+        pos = spaces.Box(low=-10000.0, high=10000.0, shape=(3,))
+
         speed = spaces.Box(low=0.0, high=1000.0, shape=(1,))
         acceleration = spaces.Box(low=-100.0, high=100.0, shape=(1,))
         jerk = spaces.Box(low=-10.0, high=10.0, shape=(1,))
@@ -83,6 +85,7 @@ class TM2020InterfaceCustom(TM2020Interface):
 
         return spaces.Tuple(
             (
+                pos,
                 speed,
                 race_progress,
                 input_steer, input_gas_pedal, input_brake,
@@ -130,6 +133,7 @@ class TM2020InterfaceCustom(TM2020Interface):
         """
         data, img = self.grab_data_and_img()
         # print(f"data: {data}")
+        pos = np.array([data[2], data[3], data[4]], dtype='float32')
 
         speed = np.array([data[0]], dtype='float32')
         acceleration = np.array([data[9]], dtype='float32')
@@ -173,17 +177,19 @@ class TM2020InterfaceCustom(TM2020Interface):
             if self.save_replays:
                 mouse_save_replay_tm20(True)
         else:
-            rew, terminated, failure_counter = self.reward_function.compute_reward(
+            rew, terminated, failure_counter, race_progress = self.reward_function.compute_reward(
                 pos=np.array([data[2], data[3], data[4]]),  # position x,y,z
                 crashed=bool(crashed), gas_input=bool(input_gas_pedal), brake_input=bool(input_brake),
                 speed=speed[0]
             )
+            race_progress = np.array([race_progress], dtype='float32')
             reward += rew
 
         failure_counter = float(failure_counter)
         img = np.array(img)
 
         observation = [
+            pos,
             speed, acceleration, jerk,
             race_progress,
             input_steer, input_gas_pedal, input_brake,
@@ -205,6 +211,7 @@ class TM2020InterfaceCustom(TM2020Interface):
         """
         self.reset_common()
         data, img = self.grab_data_and_img()
+        pos = np.array([data[2], data[3], data[4]], dtype='float32')
 
         speed = np.array([data[0]], dtype='float32')
         acceleration = np.array([data[9]], dtype='float32')
@@ -243,6 +250,7 @@ class TM2020InterfaceCustom(TM2020Interface):
         img = np.array(img)
 
         observation = [
+            pos,
             speed, acceleration, jerk,
             race_progress,
             input_steer, input_gas_pedal, input_brake,

@@ -46,14 +46,20 @@ PRAGMA_LIDAR = RTGYM_INTERFACE.endswith("LIDAR")  # True if Lidar, False if imag
 PRAGMA_CUSTOM = RTGYM_INTERFACE.endswith("MOBILEV3") or RTGYM_INTERFACE.endswith("CUSTOM")
 PRAGMA_PROGRESS = RTGYM_INTERFACE.endswith("LIDARPROGRESS")
 PRAGMA_TRACKMAP = RTGYM_INTERFACE.endswith("TRACKMAP")
+<<<<<<< HEAD
 PRAGMA_TQC = RTGYM_INTERFACE.endswith("TQC")
+=======
+PRAGMA_BEST = RTGYM_INTERFACE.endswith("BEST")
+PRAGMA_BEST_TQC = RTGYM_INTERFACE.endswith("BEST_TQC")
+PRAGMA_MBEST_TQC = RTGYM_INTERFACE.endswith("MTQC")
+>>>>>>> origin/main
 
 if PRAGMA_PROGRESS or PRAGMA_TRACKMAP:
     PRAGMA_LIDAR = True
 LIDAR_BLACK_THRESHOLD = [55, 55, 55]  # [88, 88, 88] for tiny road, [55, 55, 55] FOR BASIC ROAD
-REWARD_END_OF_TRACK = 100  # bonus reward at the end of the track
-CONSTANT_PENALTY = 1  # should be <= 0 : added to the reward at each time step
-CRASH_PENALTY = 10
+REWARD_END_OF_TRACK = TMRL_CONFIG["REWARD_END_OF_TRACK"]  # bonus reward at the end of the track
+CONSTANT_PENALTY = TMRL_CONFIG["CONSTANT_PENALTY"]  # -abs(x) : added to the reward at each time step
+CRASH_PENALTY = TMRL_CONFIG["CRASH_PENALTY"]
 SLEEP_TIME_AT_RESET = ENV_CONFIG["SLEEP_TIME_AT_RESET"]  # 1.5 to start in a Markov state with the lidar
 IMG_HIST_LEN = ENV_CONFIG["IMG_HIST_LEN"]  # 4 without RNN, 1 with RNN
 ACT_BUF_LEN = ENV_CONFIG["RTGYM_CONFIG"]["act_buf_len"]
@@ -71,6 +77,8 @@ CRC_DEBUG_SAMPLES = 100  # Number of samples collected in CRC_DEBUG mode
 PROFILE_TRAINER = False  # Will profile each epoch in the Trainer when True
 SYNCHRONIZE_CUDA = False  # Set to True for profiling, False otherwise
 DEBUG_MODE = TMRL_CONFIG["DEBUG_MODE"] if "DEBUG_MODE" in TMRL_CONFIG.keys() else False
+SEED = TMRL_CONFIG["SEED"]
+MAP_NAME = TMRL_CONFIG["MAP_NAME"]
 
 # FILE SYSTEM: =================================================
 
@@ -84,8 +92,9 @@ MODEL_PATH_WORKER = str(WEIGHTS_FOLDER / (RUN_NAME + ".tmod"))
 MODEL_PATH_SAVE_HISTORY = str(WEIGHTS_FOLDER / (RUN_NAME + "_"))
 MODEL_PATH_TRAINER = str(WEIGHTS_FOLDER / (RUN_NAME + "_t.tmod"))
 CHECKPOINT_PATH = str(CHECKPOINTS_FOLDER / (RUN_NAME + "_t.tcpt"))
+REWARDS_CHECKPOINT_PATH = str(CHECKPOINTS_FOLDER / (RUN_NAME + "_rew_" + MAP_NAME + "_t.tcpt"))
 DATASET_PATH = str(DATASET_FOLDER)
-REWARD_PATH = str(REWARD_FOLDER / "reward.pkl")
+REWARD_PATH = str(REWARD_FOLDER / str("reward_" + MAP_NAME + ".pkl"))
 
 # WANDB: =======================================================
 

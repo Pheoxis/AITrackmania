@@ -1,27 +1,27 @@
 # standard library imports
-import datetime
-import os
-import socket
-import time
 import atexit
+import datetime
 import json
+import logging
+import os
 import shutil
+import socket
 import tempfile
-from math import ceil
+import time
 from os.path import exists
 
 # third-party imports
 import numpy as np
+import wandb
 from requests import get
 from tlspyo import Relay, Endpoint
 
+import config.config_constants as cfg
+import config.config_objects as cfg_obj
 # local imports
 from actor import ActorModule
 from util import dump, load, partial_to_dict
-import config.config_constants as cfg
-import config.config_objects as cfg_obj
 
-import logging
 logging.basicConfig(level=logging.INFO)
 
 __docformat__ = "google"
@@ -53,6 +53,7 @@ class Buffer:
 
     Samples are tuples of the form (`act`, `new_obs`, `rew`, `terminated`, `truncated`, `info`)
     """
+
     def __init__(self, maxlen=cfg.BUFFERS_MAXLEN):
         """
         Args:
@@ -111,6 +112,7 @@ class Server:
     It buffers experiences sent by workers and periodically sends these to the trainer.
     It also receives the weights from the trainer and broadcasts these to the connected workers.
     """
+
     def __init__(self,
                  port=cfg.PORT,
                  password=cfg.PASSWORD,
@@ -153,6 +155,7 @@ class TrainerInterface:
     This connects to the server
     This receives samples batches and sends new weights
     """
+
     def __init__(self,
                  server_ip=None,
                  server_port=cfg.PORT,
@@ -267,7 +270,8 @@ def iterate_epochs_tm(run_cls,
 
         while run_instance.epoch < run_instance.epochs:
             # time.sleep(1)  # on network file systems writing files is asynchronous and we need to wait for sync
-            yield run_instance.run_epoch(interface=interface)  # yield stats data frame (this makes this function a generator)
+            yield run_instance.run_epoch(
+                interface=interface)  # yield stats data frame (this makes this function a generator)
             if run_instance.epoch % epochs_between_checkpoints == 0:
                 logging.info(f" saving checkpoint...")
                 t1 = time.time()
@@ -295,6 +299,7 @@ def run_with_wandb(entity, project, run_id, interface, run_cls, checkpoint_path:
     wandb_dir = tempfile.mkdtemp()  # prevent wandb from polluting the home directory
     atexit.register(shutil.rmtree, wandb_dir, ignore_errors=True)  # clean up after wandb atexit handler finishes
     import wandb
+
     logging.debug(f" run_cls: {run_cls}")
     config = partial_to_dict(run_cls)
     config['environ'] = log_environment_variables()
@@ -306,6 +311,7 @@ def run_with_wandb(entity, project, run_id, interface, run_cls, checkpoint_path:
         try:
             wandb.init(dir=wandb_dir, entity=entity, project=project, id=run_id, resume=resume, config=config)
             wandb_initialized = True
+
         except Exception as e:
             err_cpt += 1
             logging.warning(f"wandb error {err_cpt}: {e}")
@@ -314,18 +320,42 @@ def run_with_wandb(entity, project, run_id, interface, run_cls, checkpoint_path:
                 exit()
             else:
                 time.sleep(10.0)
+    # wandb.save(run_cls()) save model to wandb to visualise it
+
+    for stats in iterate_epochs_tm(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, 1,
+                                   updater_fn):
+        tmp = []
+        for s in stats:
+            metrics = json.loads(s.to_json())
+            # metrics["combined_metrics"] = metrics["loss_critic"] + metrics["loss_actor"] + metrics[
+            #     'loss_entropy_coef'] / 10000.0
+            tmp.append(wandb.log(metrics))
+    # wandb.agent(sweep_id=sweep_id, project=project+"_Sweeps", entity=entity, count=10,
+    #             function=train(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, updater_fn))
     # logging.info(config)
-    for stats in iterate_epochs_tm(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, 1, updater_fn):
-        [wandb.log(json.loads(s.to_json())) for s in stats]
 
 
-def run(interface, run_cls, checkpoint_path: str = None, dump_run_instance_fn=None, load_run_instance_fn=None, updater_fn=None):
+# def train(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, updater_fn):
+#     for stats in iterate_epochs_tm(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, 1,
+#                                    updater_fn):
+#         tmp = []
+#         for s in stats:
+#             metrics = json.loads(s.to_json())
+#             metrics["combined_metrics"] = metrics["loss_critic"] + metrics["loss_actor"] + metrics[
+#                 'loss_entropy_coef'] / 10000.0
+#             tmp.append(wandb.log(metrics))
+#         print(tmp)
+
+
+def run(interface, run_cls, checkpoint_path: str = None, dump_run_instance_fn=None, load_run_instance_fn=None,
+        updater_fn=None):
     """
     Main training loop (remote).
     """
     dump_run_instance_fn = dump_run_instance_fn or dump_run_instance
     load_run_instance_fn = load_run_instance_fn or load_run_instance
-    for stats in iterate_epochs_tm(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, 1, updater_fn):
+    for stats in iterate_epochs_tm(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, 1,
+                                   updater_fn):
         pass
 
 
@@ -336,6 +366,7 @@ class Trainer:
     The `Trainer` object is where RL training happens.
     Typically, it can be located on a HPC cluster.
     """
+
     def __init__(self,
                  training_cls=cfg_obj.TRAINER,
                  server_ip=cfg.SERVER_IP_FOR_TRAINER,
@@ -403,8 +434,7 @@ class Trainer:
                        entity=cfg.WANDB_ENTITY,
                        project=cfg.WANDB_PROJECT,
                        run_id=cfg.WANDB_RUN_ID,
-                       key=None,
-                       watch_gradients = True):
+                       key=None):
         """
         Runs training while logging metrics to wandb_.
 
@@ -439,6 +469,7 @@ class RolloutWorker:
     A `RolloutWorker` may connect to a `Server` to which it sends buffered experience.
     Alternatively, it may exist in standalone mode for deployment.
     """
+
     def __init__(
             self,
             env_cls,
@@ -619,7 +650,8 @@ class RolloutWorker:
                 sample = self.get_local_buffer_sample(act, new_obs, rew, terminated, truncated, info)
             else:
                 sample = act, new_obs, rew, terminated, truncated, info
-            self.buffer.append_sample(sample)  # CAUTION: in the buffer, act is for the PREVIOUS transition (act, obs(act))
+            self.buffer.append_sample(
+                sample)  # CAUTION: in the buffer, act is for the PREVIOUS transition (act, obs(act))
         # if reward_function is not None:
         #     if terminated or truncated:
         #         print(f"round reward: {self.round_reward}")
@@ -644,7 +676,8 @@ class RolloutWorker:
         steps = 0
         obs, info = self.reset(collect_samples=True)
         for i in range(max_samples):
-            obs, rew, terminated, truncated, info = self.step(obs=obs, test=False, collect_samples=True, last_step=i == max_samples - 1)
+            obs, rew, terminated, truncated, info = self.step(obs=obs, test=False, collect_samples=True,
+                                                              last_step=i == max_samples - 1)
             ret += rew
             steps += 1
             if terminated or truncated:
@@ -688,7 +721,8 @@ class RolloutWorker:
         self.buffer.stat_test_return = ret
         self.buffer.stat_test_steps = steps
 
-    def run(self, test_episode_interval=50, nb_episodes=np.inf):  # TODO: check number of collected samples are collected before sending
+    def run(self, test_episode_interval=50,
+            nb_episodes=np.inf):  # TODO: check number of collected samples are collected before sending
         """
         Runs the worker for `nb_episodes` episodes.
 

@@ -1,10 +1,15 @@
 # standard library imports
+import atexit
 import os
 import pickle
+import shutil
+import tempfile
+import time
 
 # third-party imports
 import numpy as np
 import logging
+from config import config_constants as cfg
 
 import wandb
 
@@ -18,11 +23,11 @@ class RewardFunction:
 
     def __init__(self,
                  reward_data_path,
-                 nb_obs_forward=8,
-                 nb_obs_backward=8,
-                 nb_zero_rew_before_failure=12,
-                 min_nb_steps_before_failure=int(3.5 * 20),
-                 max_dist_from_traj=60.0,
+                 nb_obs_forward=12,
+                 nb_obs_backward=12,
+                 nb_zero_rew_before_failure=10,
+                 min_nb_steps_before_failure=int(2.5 * 20),
+                 max_dist_from_traj=50.0,
                  crash_penalty=10.0,
                  constant_penalty=0.0):
         """
@@ -44,6 +49,7 @@ class RewardFunction:
                 self.data = pickle.load(f)
 
         self.cur_idx = 0
+        self.prev_idx = 0
         self.nb_obs_forward = nb_obs_forward
         self.nb_obs_backward = nb_obs_backward
         self.nb_zero_rew_before_failure = nb_zero_rew_before_failure
@@ -52,14 +58,32 @@ class RewardFunction:
         self.step_counter = 0
         self.failure_counter = 0
         self.datalen = len(self.data)
-        self.survive_reward = 0.5
+        # self.survive_reward = 0.5
         self.crash_penalty = crash_penalty
         self.crash_counter = 1
         self.constant_penalty = constant_penalty
-        self.gas_reward = 0.0001
-        self.brake_penalty = -0.0002
-        self.counter = 0
+        # self.gas_reward = 0.0001
+        # self.brake_penalty = -0.0002
+        # self.counter = 0
         self.reward_sum = 0.0
+        self.isFinished = False
+        # self.reward_sum_list = []
+        wandb_dir = tempfile.mkdtemp()  # prevent wandb from polluting the home directory
+        atexit.register(shutil.rmtree, wandb_dir, ignore_errors=True)  # clean up after wandb atexit handler finishes
+        wandb_initialized = False
+        err_cpt = 0
+        while not wandb_initialized:
+            try:
+                wandb.init(project=cfg.WANDB_PROJECT, entity=cfg.WANDB_ENTITY, id=cfg.WANDB_RUN_ID+"_rewards")
+                wandb_initialized = True
+            except Exception as e:
+                err_cpt += 1
+                logging.warning(f"wandb error {err_cpt}: {e}")
+                if err_cpt > 10:
+                    logging.warning(f"Could not connect to wandb, aborting.")
+                    exit()
+                else:
+                    time.sleep(10.0)
         # self.tmp_counter = 0
         # self.traj = []
 
@@ -109,20 +133,35 @@ class RewardFunction:
             self.failure_counter = 0
         self.cur_idx = best_index
 
+        if self.cur_idx > 0:
+            if self.cur_idx > self.prev_idx:
+                reward *= (1 + (2*self.cur_idx)/len(self.data))
+                self.prev_idx = self.cur_idx
+
+        if not self.isFinished:
+            if self.cur_idx > int(0.998 * len(self.data)):
+                reward += cfg.REWARD_END_OF_TRACK
+                self.isFinished = True
+
         if crashed:
             reward -= abs(self.crash_penalty) * self.crash_counter
             self.crash_counter += 1
 
+        reward -= abs(self.constant_penalty)
+
         self.reward_sum += reward
         if terminated:
-            self.counter += 1
+            # self.counter += 1
             print(f"Total reward of the run: {self.reward_sum}")
+            self.isFinished = False
+            if self.reward_sum != 0.0:
+                # self.reward_sum_list.append(self.reward_sum)
+                wandb.log({"Run reward": self.reward_sum})
             # logging.info(f"Total reward of the run: {self.reward_sum}")
             # if self.counter % 2 == 0:
             #     self.min_nb_steps_before_failure += 2
 
-        reward -= abs(self.constant_penalty)
-        return reward, terminated, self.failure_counter
+        return reward, terminated, self.failure_counter, self.cur_idx
 
     def reset(self):
         """
