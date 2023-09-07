@@ -1,3 +1,5 @@
-import logging
-logging.basicConfig(level=logging.INFO)
-logging.info("This is an info message")
+from torchviz import make_dot
+import torch
+
+model = torch.load_state_dict()
+y = model(X)

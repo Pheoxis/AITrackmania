@@ -28,7 +28,7 @@ def gru(input_size, rnn_size, rnn_len, dropout: float = 0.1):
     return gru_layers
 
 
-def lstm(input_size, rnn_size, rnn_len, dropout: float = 0.1):
+def lstm(input_size, rnn_size, rnn_len, dropout: float = 0.0):
     num_rnn_layers = rnn_len
     assert num_rnn_layers >= 1
     hidden_size = rnn_size
@@ -84,11 +84,11 @@ class CNNModule(nn.Module):
             )
             self.conv_blocks.append(next_conv)
             self.h_out, self.w_out = conv2d_out_dims(next_conv, self.h_out, self.w_out)
-            next_conv = nn.Conv2d(
-                out_channels, out_channels, kernel_size=3, stride=1, padding=0, groups=self.conv_groups
-            )
-            self.conv_blocks.append(next_conv)
-            self.h_out, self.w_out = conv2d_out_dims(next_conv, self.h_out, self.w_out)
+            # next_conv = nn.Conv2d(
+            #     out_channels, out_channels, kernel_size=3, stride=1, padding=0, groups=self.conv_groups
+            # )
+            # self.conv_blocks.append(next_conv)
+            # self.h_out, self.w_out = conv2d_out_dims(next_conv, self.h_out, self.w_out)
             self.conv_blocks.append(nn.BatchNorm2d(out_channels))
             self.conv_blocks.append(nn.MaxPool2d(kernel_size=2, stride=2))
             self.h_out //= 2
@@ -98,7 +98,7 @@ class CNNModule(nn.Module):
         flat_features = out_channels * self.h_out * self.w_out
         self.mlp_out_size = mlp_out_size
         self.fc1 = nn.Linear(in_features=flat_features, out_features=mlp_out_size)
-        self.noise_scale = 0.08
+        self.noise_scale = 0.05
 
     def forward(self, x):
         x = self.bn_input(x)
@@ -123,54 +123,59 @@ class CNNModule(nn.Module):
 class QRCNNQFunction(nn.Module):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=192, rnn_len=2, mlp_branch_sizes=(192, 256, 192),
+            self, observation_space, action_space, rnn_size=512, rnn_len=1, mlp_branch_sizes=(512, 1024, 1024, 256),
             activation=nn.GELU, num_quantiles=25
     ):
         super().__init__()
-        self.conv_branch = CNNModule()
+        self.conv_branch1 = CNNModule()
+        # self.conv_branch2 = CNNModule()
         self.activation = activation()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        # mlp branch
+
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
         dim_obs -= math.prod(s for s in observation_space[24].shape)
         self.num_quantiles = num_quantiles
-        self.layerNorm = nn.LayerNorm(dim_obs)
-        mlp1_size, mlp2_size, mlp3_size = mlp_branch_sizes
-        self.mlp1 = nn.Linear(dim_obs, mlp1_size)
-        self.mlp2 = nn.Linear(mlp1_size, mlp2_size)
-        self.mlp3 = nn.Linear(mlp2_size, mlp3_size)
-        # self.dropoutMlpBranch = nn.Dropout(0.05)
+        # dim_act = action_space.shape[0]
+        mlp1_size, mlp2_size, mlp3_size, mlp4_size = mlp_branch_sizes
 
-        self.cat_mlp = nn.Linear(mlp3_size + self.conv_branch.mlp_out_size, mlp2_size)
-        self.mlp_after_mlp_cat_size = 256
-        # self.mlp_after_cat = nn.Linear(mlp2_size, self.mlp_after_mlp_cat_size)
-        self.noisy_after_cat = NoisyLinear(mlp2_size, self.mlp_after_mlp_cat_size, device=self.device)
-        self.rnn_block = lstm(self.mlp_after_mlp_cat_size, rnn_size, rnn_len)
-        self.mlp_after_rnn = nn.Linear(rnn_size, self.mlp_after_mlp_cat_size)
-        self.mlp_after_rnn2 = nn.Linear(self.mlp_after_mlp_cat_size, mlp3_size)
-        self.mlp_after_rnn3 = nn.Linear(mlp3_size, self.conv_branch.mlp_out_size)
-        self.q_model_out = nn.Linear(self.conv_branch.mlp_out_size + 3, num_quantiles)
-        self.dropoutModelOut = nn.Dropout(0.05)
+        self.layerNorm = nn.LayerNorm(dim_obs)
+        self.mlp1_lvl1 = nn.Linear(dim_obs, mlp1_size)
+        # self.mlp2_lvl1 = nn.Linear(dim_obs, mlp1_size)
+        # self.mlp3_lvl1 = nn.Linear(dim_obs, mlp1_size)
+        self.mlp1_lvl2 = nn.Linear(mlp1_size, mlp2_size)
+        self.noisy_after_cat = NoisyLinear(
+            mlp2_size + self.conv_branch1.mlp_out_size,  # + self.conv_branch2.mlp_out_size,
+            mlp3_size,
+            device=self.device
+        )
+        self.rnn_block1 = lstm(mlp3_size, rnn_size, rnn_len)
+        self.rnn_block2 = lstm(mlp3_size, rnn_size, rnn_len)
+        self.mlp1_lvl3 = nn.Linear(rnn_size * 2, mlp4_size)
+        self.mlp1_lvl4 = nn.Linear(mlp4_size + 3, num_quantiles)
+        self.dropoutModelOut = nn.Dropout(0.1)
 
         self.h0 = None
+        self.h1 = None
         self.c0 = None
+        self.c1 = None
         self.rnn_size = rnn_size
         self.rnn_len = rnn_len
 
     def forward(self, observation, act, save_hidden=False):
-        self.rnn_block.flatten_parameters()
+        self.rnn_block1.flatten_parameters()
+        self.rnn_block2.flatten_parameters()
         batch_size = observation[0].shape[0]
-        conv_branch_out = None
+        # conv_branch_out = None
         if type(observation) is tuple:
             observation = list(observation)
         if batch_size == 1:
             cnn_branch_input = observation[24].permute(0, 3, 1, 2).float()
-            conv_branch_out = self.conv_branch(cnn_branch_input)
-            observation[24] = conv_branch_out
+            conv_branch_out1 = self.conv_branch1(cnn_branch_input)
+            # conv_branch_out2 = self.conv_branch2(cnn_branch_input)
         else:
             cnn_branch_input = observation[24].permute(0, 3, 1, 2).float()
-            conv_branch_out = self.conv_branch(cnn_branch_input)
-            observation[24] = conv_branch_out
+            conv_branch_out1 = self.conv_branch1(cnn_branch_input)
+            # conv_branch_out2 = self.conv_branch2(cnn_branch_input)
             # observation = list(observation)
             # appended_tensors = []
             # for i, obs in enumerate(observation[24]):
@@ -184,6 +189,26 @@ class QRCNNQFunction(nn.Module):
             # Separate observations at index 24
         observation_except_24 = observation[:24] + observation[25:]
 
+        if not save_hidden or self.h0 is None or self.c0 is None:
+            device = observation_except_24[0].device
+            h0 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            c0 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            h1 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            c1 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+        else:
+            h0 = self.h0
+            h1 = self.h1
+            c0 = self.c0
+            c1 = self.c1
+
         for index, _ in enumerate(observation_except_24):
             observation_except_24[index] = observation_except_24[index].view(batch_size, 1, -1)
 
@@ -192,53 +217,38 @@ class QRCNNQFunction(nn.Module):
         obs_seq_cat = obs_seq_cat.view(batch_size, -1)
 
         layer_norm_out = self.layerNorm(obs_seq_cat)
-        mlp1_out = self.activation(self.mlp1(layer_norm_out))
-        mlp2_out = self.activation(self.mlp2(mlp1_out))
-        mlp3_out = self.activation(self.mlp3(mlp2_out))
+        mlp1_lvl1_out = self.activation(self.mlp1_lvl1(layer_norm_out))
+        # mlp2_lvl1_out = self.activation(self.mlp2_lvl1(layer_norm_out))
+        # mlp3_lvl1_out = self.activation(self.mlp3_lvl1(layer_norm_out))
+
+        # mlp_lvl1_cat = torch.cat([mlp1_lvl1_out, mlp2_lvl1_out,
+        #                           # mlp3_lvl1_out
+        #                           ], dim=-1)
+
+        mlp1_lvl2_out = self.activation(self.mlp1_lvl2(mlp1_lvl1_out))
 
         # dropout_mlp_branch_out = self.activation(self.dropoutMlpBranch(mlp3_out))
-        mlp_branch_cnn_module_cat = torch.cat([mlp3_out, observation[24]], dim=-1)
+        mlp_branch_cnn_module_cat = torch.cat([mlp1_lvl2_out, conv_branch_out1
+                                                 #, conv_branch_out2
+                                               ], dim=-1)
 
-        cat_mlp_out = self.activation(self.cat_mlp(mlp_branch_cnn_module_cat))
-        residual_cat = cat_mlp_out + mlp2_out
+        noisy_out = self.activation(self.noisy_after_cat(mlp_branch_cnn_module_cat))
 
-        mlp_after_cat_out = self.activation(self.noisy_after_cat(residual_cat))
+        lstm1_out, (h0, c0) = self.rnn_block1(noisy_out, (h0, c0))
+        lstm2_out, (h1, c1) = self.rnn_block1(noisy_out, (h1, c1))
 
-        if not save_hidden or self.h0 is None or self.c0 is None:
-            device = observation_except_24[0].device
-            h = Variable(
-                torch.zeros((self.rnn_len, self.rnn_size), device=device)
-            )
-            c = Variable(
-                torch.zeros((self.rnn_len, self.rnn_size), device=device)
-            )
-        else:
-            h = self.h0
-            c = self.c0
+        lstm_cat = torch.cat([lstm1_out, lstm2_out, act], dim=-1)
 
-        rnn_block_out, (h, c) = self.rnn_block(mlp_after_cat_out, (h, c))
+        mlp1_lvl3_out = self.activation(self.mlp1_lvl3(lstm_cat))
+        mlp1_lvl4_out = self.activation(self.mlp1_lvl4(mlp1_lvl3_out))
 
-        mlp_after_rnn_out = self.activation(self.mlp_after_rnn(rnn_block_out))
-
-        residual_rnn_conn = mlp_after_rnn_out + mlp_after_cat_out
-
-        mlp_after_rnn2_out = self.activation(self.mlp_after_rnn2(residual_rnn_conn))
-
-        residual_mlp3_rnn2_out = mlp_after_rnn2_out + mlp3_out
-
-        mlp_after_rnn3_out = self.mlp_after_rnn3(residual_mlp3_rnn2_out)
-
-        residual_mlp_conv = mlp_after_rnn3_out + conv_branch_out
-
-        net_out = torch.cat((residual_mlp_conv, act), -1)
-
-        q = self.q_model_out(net_out)
-
-        q = self.dropoutModelOut(q)
+        q = self.dropoutModelOut(mlp1_lvl4_out)
 
         if save_hidden:
-            self.h0 = h
-            self.c0 = c
+            self.h0 = h0
+            self.h1 = h1
+            self.c0 = c0
+            self.c1 = c1
 
         return torch.squeeze(q, -1)
 
@@ -246,73 +256,92 @@ class QRCNNQFunction(nn.Module):
 class SquashedActorQRCNN(TorchActorModule):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=192, rnn_len=2, mlp_branch_sizes=(192, 256, 192),
+            self, observation_space, action_space, rnn_size=512, rnn_len=1, mlp_branch_sizes=(512, 1024, 1024, 256),
             activation=nn.GELU
     ):
         super().__init__(
             observation_space, action_space
         )
-        self.conv_branch = CNNModule()
+        self.conv_branch1 = CNNModule()
+        # self.conv_branch2 = CNNModule()
         self.activation = activation()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        # mlp branch
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
         dim_obs -= math.prod(s for s in observation_space[24].shape)
-        self.layerNorm = nn.LayerNorm(dim_obs)
-        mlp1_size, mlp2_size, mlp3_size = mlp_branch_sizes
-        self.mlp1 = nn.Linear(dim_obs, mlp1_size)
-        self.mlp2 = nn.Linear(mlp1_size, mlp2_size)
-        self.mlp3 = nn.Linear(mlp2_size, mlp3_size)
-        # self.dropoutMlpBranch = nn.Dropout(0.05)
-
-        self.cat_mlp = nn.Linear(mlp3_size + self.conv_branch.mlp_out_size, mlp2_size)
-        self.mlp_after_mlp_cat_size = 256
-        # self.mlp_after_cat = nn.Linear(mlp2_size, self.mlp_after_mlp_cat_size)
-        self.noisy_after_cat = NoisyLinear(mlp2_size, self.mlp_after_mlp_cat_size, device=self.device)
-        self.rnn_block = lstm(self.mlp_after_mlp_cat_size, rnn_size, rnn_len)
-        self.mlp_after_rnn = nn.Linear(rnn_size, self.mlp_after_mlp_cat_size)
-        self.mlp_after_rnn2 = nn.Linear(self.mlp_after_mlp_cat_size, mlp3_size)
-        self.mlp_after_rnn3 = nn.Linear(mlp3_size, self.conv_branch.mlp_out_size)
-        self.dropoutModelOut = nn.Dropout(0.05)
-
         dim_act = action_space.shape[0]
-        self.mu_layer = nn.Linear(self.conv_branch.mlp_out_size, dim_act)
-        self.log_std_layer = nn.Linear(self.conv_branch.mlp_out_size, dim_act)
+        mlp1_size, mlp2_size, mlp3_size, mlp4_size = mlp_branch_sizes
+
+        self.layerNorm = nn.LayerNorm(dim_obs)
+        self.mlp1_lvl1 = nn.Linear(dim_obs, mlp1_size)
+        # self.mlp2_lvl1 = nn.Linear(dim_obs, mlp1_size)
+        # self.mlp3_lvl1 = nn.Linear(dim_obs, mlp1_size)
+        self.mlp1_lvl2 = nn.Linear(mlp1_size, mlp2_size)
+        self.noisy_after_cat = NoisyLinear(
+            mlp2_size + self.conv_branch1.mlp_out_size, # + self.conv_branch2.mlp_out_size,
+            mlp3_size,
+            device=self.device
+        )
+        self.rnn_block1 = lstm(mlp3_size, rnn_size, rnn_len)
+        self.rnn_block2 = lstm(mlp3_size, rnn_size, rnn_len)
+        self.mlp1_lvl3 = nn.Linear(rnn_size * 2, mlp4_size)
+        self.dropoutModelOut = nn.Dropout(0.1)
+
+        self.mu_layer = nn.Linear(mlp4_size, dim_act)
+        self.log_std_layer = nn.Linear(mlp4_size, dim_act)
         self.act_limit = action_space.high[0]
         self.log_std_min = LOG_STD_MIN
         self.log_std_max = LOG_STD_MAX
         self.squash_correction = 2 * (np.log(2) - np.log(self.act_limit))
         self.h0 = None
+        self.h1 = None
         self.c0 = None
+        self.c1 = None
         self.rnn_size = rnn_size
         self.rnn_len = rnn_len
 
     def forward(self, observation, test=False, with_logprob=True, save_hidden=False):
-        self.rnn_block.flatten_parameters()
+        self.rnn_block1.flatten_parameters()
+        self.rnn_block2.flatten_parameters()
         batch_size = observation[0].shape[0]
-        conv_branch_out = None
+        # conv_branch1_out = None
+        # conv_branch2_out = None
+
         if type(observation) is tuple:
             observation = list(observation)
         if batch_size == 1:
             cnn_branch_input = observation[24].permute(0, 3, 1, 2).float()
-            conv_branch_out = self.conv_branch(cnn_branch_input)
-            observation[24] = conv_branch_out
+            conv_branch_out1 = self.conv_branch1(cnn_branch_input)
+            # conv_branch_out2 = self.conv_branch2(cnn_branch_input)
+            # observation[24] = conv_branch_out1
         else:
-            # appended_tensors = []
-            # for i, obs in enumerate(observation[24]):
-            #     obs = torch.unsqueeze(obs, dim=0)
-            #     cnn_branch_input = obs.permute(0, 3, 1, 2).float()
-            #     conv_branch_out = self.conv_branch(cnn_branch_input)
-            #     appended_tensors.append(conv_branch_out)
-            # appended_tensor = torch.cat(appended_tensors, dim=0)
-            # observation[24] = appended_tensor
             cnn_branch_input = observation[24].permute(0, 3, 1, 2).float()
-            conv_branch_out = self.conv_branch(cnn_branch_input)
-            observation[24] = conv_branch_out
+            conv_branch_out1 = self.conv_branch1(cnn_branch_input)
+            # conv_branch_out2 = self.conv_branch2(cnn_branch_input)
+            # observation[24] = conv_branch_out2
 
             # Separate observations at index 24
         observation_except_24 = observation[:24] + observation[25:]
+
+        if not save_hidden or self.h0 is None or self.c0 is None:
+            device = observation_except_24[0].device
+            h0 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            c0 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            h1 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            c1 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+        else:
+            h0 = self.h0
+            h1 = self.h1
+            c0 = self.c0
+            c1 = self.c1
 
         for index, _ in enumerate(observation_except_24):
             observation_except_24[index] = observation_except_24[index].view(batch_size, 1, -1)
@@ -322,45 +351,31 @@ class SquashedActorQRCNN(TorchActorModule):
         obs_seq_cat = obs_seq_cat.view(batch_size, -1)
 
         layer_norm_out = self.layerNorm(obs_seq_cat)
-        mlp1_out = self.activation(self.mlp1(layer_norm_out))
-        mlp2_out = self.activation(self.mlp2(mlp1_out))
-        mlp3_out = self.activation(self.mlp3(mlp2_out))
+        mlp1_lvl1_out = self.activation(self.mlp1_lvl1(layer_norm_out))
+        # mlp2_lvl1_out = self.activation(self.mlp2_lvl1(layer_norm_out))
+        # mlp3_lvl1_out = self.activation(self.mlp3_lvl1(layer_norm_out))
+
+        # mlp_lvl1_cat = torch.cat([mlp1_lvl1_out, mlp2_lvl1_out,
+        #                           #mlp3_lvl1_out
+        #                           ], dim=-1)
+
+        mlp1_lvl2_out = self.activation(self.mlp1_lvl2(mlp1_lvl1_out))
 
         # dropout_mlp_branch_out = self.activation(self.dropoutMlpBranch(mlp3_out))
-        mlp_branch_cnn_module_cat = torch.cat([mlp3_out, observation[24]], dim=-1)
+        mlp_branch_cnn_module_cat = torch.cat([mlp1_lvl2_out, conv_branch_out1
+                                                # , conv_branch_out2
+                                               ], dim=-1)
 
-        cat_mlp_out = self.activation(self.cat_mlp(mlp_branch_cnn_module_cat))
-        residual_cat = cat_mlp_out + mlp2_out
+        noisy_out = self.activation(self.noisy_after_cat(mlp_branch_cnn_module_cat))
 
-        mlp_after_cat_out = self.activation(self.noisy_after_cat(residual_cat))
+        lstm1_out, (h0, c0) = self.rnn_block1(noisy_out, (h0, c0))
+        lstm2_out, (h1, c1) = self.rnn_block1(noisy_out, (h1, c1))
 
-        if not save_hidden or self.h0 is None or self.c0 is None:
-            device = observation_except_24[0].device
-            h = Variable(
-                torch.zeros((self.rnn_len, self.rnn_size), device=device)
-            )
-            c = Variable(
-                torch.zeros((self.rnn_len, self.rnn_size), device=device)
-            )
-        else:
-            h = self.h0
-            c = self.c0
+        lstm_cat = torch.cat([lstm1_out, lstm2_out], dim=-1)
 
-        rnn_block_out, (h, c) = self.rnn_block(mlp_after_cat_out, (h, c))
+        mlp1_lvl3_out = self.activation(self.mlp1_lvl3(lstm_cat))
 
-        mlp_after_rnn_out = self.activation(self.mlp_after_rnn(rnn_block_out))
-
-        residual_rnn_conn = mlp_after_rnn_out + mlp_after_cat_out
-
-        mlp_after_rnn2_out = self.activation(self.mlp_after_rnn2(residual_rnn_conn))
-
-        residual_mlp3_rnn2_out = mlp_after_rnn2_out + mlp3_out
-
-        mlp_after_rnn3_out = self.mlp_after_rnn3(residual_mlp3_rnn2_out)
-
-        residual_mlp_conv = mlp_after_rnn3_out + conv_branch_out
-
-        dropout_model_out = self.dropoutModelOut(residual_mlp_conv)
+        dropout_model_out = self.dropoutModelOut(mlp1_lvl3_out)
 
         mu = self.mu_layer(dropout_model_out)
         log_std = self.log_std_layer(dropout_model_out)
@@ -392,8 +407,10 @@ class SquashedActorQRCNN(TorchActorModule):
         pi_action = pi_action.squeeze()
 
         if save_hidden:
-            self.h0 = h
-            self.c0 = c
+            self.h0 = h0
+            self.h1 = h1
+            self.c0 = c0
+            self.c1 = c1
 
         return pi_action, logp_pi
 
@@ -408,7 +425,7 @@ class SquashedActorQRCNN(TorchActorModule):
 class QRCNNActorCritic(nn.Module):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=192, rnn_len=2, mlp_branch_sizes=(192, 256, 192),
+            self, observation_space, action_space, rnn_size=512, rnn_len=1, mlp_branch_sizes=(512, 1024, 1024, 256),
             activation=nn.GELU, num_quantiles=25
     ):
         super().__init__()

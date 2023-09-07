@@ -69,8 +69,8 @@ class REDQSACAgent(TrainingAgent):
         logging.debug(f" device REDQ-SAC: {device}")
         self.model = model.to(device)
         self.model_target = no_grad(deepcopy(self.model))
-        self.pi_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor, weight_decay=0.005)
-        self.q_optimizer_list = [Adam(q.parameters(), lr=self.lr_critic, weight_decay=0.005) for q in self.model.qs]
+        self.pi_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor, weight_decay=0.001)
+        self.q_optimizer_list = [Adam(q.parameters(), lr=self.lr_critic, weight_decay=0.001) for q in self.model.qs]
         self.criterion = torch.nn.MSELoss()
         self.loss_pi = torch.zeros((1,), device=device)
 
@@ -217,12 +217,14 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
             # Note: we optimize the log of the entropy coeff which is slightly different from the paper
             # as discussed in https://github.com/rail-berkeley/softlearning/issues/37
             self.log_alpha = torch.log(torch.ones(1, device=self.device) * self.alpha).requires_grad_(True)
-            self.alpha_optimizer = Adam([self.log_alpha], lr=self.lr_entropy, weight_decay=0.005)
+            self.alpha_optimizer = Adam([self.log_alpha], lr=self.lr_entropy)
         else:
             self.alpha_t = torch.tensor(float(self.alpha)).to(self.device)
 
         if cfg.WANDB_GRADIENTS:
             wandb.watch(self.model, log_freq=10)
+
+        # self.is_rendered = False
 
     def get_actor(self):
         return self.model_nograd.actor
@@ -232,6 +234,15 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
         o, a, r, o2, d, _ = batch
 
         pi, logp_pi = self.model.actor(o)
+        # if not self.is_rendered or self.is_rendered is None:
+        #     torch.onnx.export(self.model.q1, (o, a), "sacv2_model_critic.onnx", verbose=True,
+        #                       input_names=["api", "frame"], output_names=["actions"])
+        #     torch.onnx.export(self.model.actor, o2, "sacv2_model_actor.onnx", verbose=True,
+        #                       input_names=["api", "frame"], output_names=["actions"])
+        #     self.is_rendered = True
+        # if not self.is_rendered or self.is_rendered is None:
+        #     from torchviz import make_dot
+        #     make_dot()
         # FIXME? log_prob = log_prob.reshape(-1, 1)
 
         # loss_alpha:
@@ -244,7 +255,7 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
             alpha_t = torch.exp(self.log_alpha.detach())
             loss_alpha = -(self.log_alpha * (logp_pi + self.target_entropy).detach()).mean()
         else:
-            alpha_t = self.alpha_t
+            alpha_t = self.alpha_t  # (1, )
 
         # Optimize entropy coefficient, also called
         # entropy temperature or alpha in the paper
@@ -266,9 +277,9 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
             a2, logp_a2 = self.model.actor(o2)
 
             # Target Q-values
-            q1_pi_targ = self.model_target.q1(o2, a2)
-            q2_pi_targ = self.model_target.q2(o2, a2)
-            q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
+            q1_pi_targ = self.model_target.q1(o2, a2)  # (batch size)
+            q2_pi_targ = self.model_target.q2(o2, a2)  # (batch size)
+            q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)  # (batch size)
             backup = r + self.gamma * (1 - d) * (q_pi_targ - alpha_t * logp_a2)
 
         # MSE loss against Bellman backup
@@ -431,26 +442,26 @@ class TQCAgent(TrainingAgent):
     lr_entropy: float = 1e-3
     learn_entropy_coef: bool = True
     target_entropy: float = None
-    top_quantiles_to_drop: float = 0.08  # ~8% of total number of atoms
+    top_quantiles_to_drop: int = 2  # ~8% of total number of atoms
+    quantiles_number: int = 25
 
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
     def __post_init__(self):
         observation_space, action_space = self.observation_space, self.action_space
+        quantiles_number = self.quantiles_number
         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
-        model = self.model_cls(observation_space, action_space)  # Use TQCActorCritic
+        model = self.model_cls(observation_space, action_space, num_quantiles=quantiles_number)  # Use TQCActorCritic
         logging.debug(f" device TQC: {device}")
         self.model = model.to(device)
         self.model_target = no_grad(deepcopy(self.model))
 
         # Set up optimizers for policy and q-function
-        self.actor_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor)
+        self.actor_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor, weight_decay=0.001)
         self.critic_optimizer = Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()),
-                                     lr=self.lr_critic)
+                                     lr=self.lr_critic, weight_decay=0.001)
 
         self.quantiles_total = self.model.q1.num_quantiles + self.model.q2.num_quantiles
-        self.top_quantiles_to_drop = math.ceil(self.top_quantiles_to_drop * self.quantiles_total)
-        print(f"top quantiles to drop: {self.top_quantiles_to_drop}")
 
         if self.target_entropy is None:
             self.target_entropy = -np.prod(action_space.shape).astype(np.float32)
@@ -462,6 +473,9 @@ class TQCAgent(TrainingAgent):
             self.alpha_optimizer = Adam([self.log_alpha], lr=self.lr_entropy)
         else:
             self.alpha_t = torch.tensor(float(self.alpha)).to(device)
+
+        if cfg.WANDB_GRADIENTS:
+            wandb.watch(self.model, log_freq=10)
 
     def get_actor(self):
         return self.model_nograd.actor
@@ -511,55 +525,57 @@ class TQCAgent(TrainingAgent):
 
         q1_pi = self.model.q1(o, pi)
         q2_pi = self.model.q2(o, pi)
-        # q_pi = torch.min(q1_pi, q2_pi)
-        # actor_loss = (alpha_t * logp_pi - q_pi).mean()
 
-        # # Bellman backup for Q functions
-        # with torch.no_grad():
-        #     # Target actions come from *current* policy
-        #     a2, logp_a2 = self.model.actor(o2)
-        #
-        #     # Target Q-values
-        #     q1_pi_targ = self.model_target.q1(o2, a2)
-        #     q2_pi_targ = self.model_target.q2(o2, a2)
-        #     q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
-        #     backup = r + self.gamma * (1 - d) * (q_pi_targ - alpha_t * logp_a2)
-
-        # next_z = torch.min(next_q1, next_q2)
-        # next_z = torch.reshape(next_z, (batch_size, self.quantiles_total))
+        # https://github.com/Stable-Baselines-Team/stable-baselines3-contrib/blob/master/sb3_contrib/tqc/tqc.py :
         with torch.no_grad():
             new_next_action, next_log_pi = self.model.actor(o2)  # Tensor(batch x 3), Tensor(batch)
             # Compute and cut quantiles at the next state
             next_q1 = self.model_target.q1(o2, new_next_action)  # Tensor(batch x quantiles)
             next_q2 = self.model_target.q2(o2, new_next_action)  # Tensor(batch x quantiles)
             next_z = torch.stack((next_q1, next_q2), dim=1)  # Tensor(batch x nets x quantiles)
-            sorted_z, _ = torch.sort(next_z.reshape(batch_size, -1))
-            sorted_z_part = sorted_z[:, :self.quantiles_total - self.top_quantiles_to_drop] # Tensor(batch x 2*[quantiles - top_quantiles_to_drop])
-            # alpha: Tensor (1,)
-            backup = r + (1 - d) * self.gamma * (sorted_z_part - alpha * next_log_pi)
+            sorted_z, _ = torch.sort(next_z.reshape(batch_size, -1))  # Tensor(batch x [nets * quantiles])
+            sorted_z_part = sorted_z[:,
+                            :self.quantiles_total - self.top_quantiles_to_drop]
+            target_quantiles = sorted_z_part - alpha * next_log_pi.reshape(-1, 1)
+            not_done = 1 - d
+            tmp = target_quantiles * not_done[:, None]
+            r = r.unsqueeze(1)
+            r = r.expand(-1, self.quantiles_total - self.top_quantiles_to_drop)
+            backup = r + tmp
 
         cur_z = torch.stack((q1_pi, q2_pi), dim=1)
         critic_loss = self.quantile_huber_loss_f(cur_z, backup)
-
-        new_action, log_pi = self.get_actor()(o)
-        actor_loss = (alpha * log_pi - self.model.critic(o, new_action).mean(2).mean(1, keepdim=True)).mean()
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
 
-        for param, target_param in zip(self.model.critic.parameters(), self.model_target.critic.parameters()):
-            target_param.data.copy_(self.polyak * param.data + (1 - self.polyak) * target_param.data)
+        self.model.q1.requires_grad_(False)
+        self.model.q2.requires_grad_(False)
+
+        new_action, log_pi = self.get_actor()(o)
+        q1_pi = self.model.q1(o, new_action)
+        q2_pi = self.model.q2(o, new_action)
+        new_critic = torch.stack((q1_pi, q2_pi), dim=1)
+        actor_loss = (alpha * log_pi - new_critic.mean(2).mean(1, keepdim=True)).mean()
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
 
+        self.model.q1.requires_grad_(True)
+        self.model.q2.requires_grad_(True)
+
+        with torch.no_grad():
+            for p, p_targ in zip(self.model.parameters(), self.model_target.parameters()):
+                # NB: We use an in-place operations "mul_", "add_" to update target
+                # params, as opposed to "mul" and "add", which would make new tensors.
+                p_targ.data.mul_(self.polyak)
+                p_targ.data.add_((1 - self.polyak) * p.data)
+
         ret_dict = {
             "loss_actor": actor_loss.detach(),
-            "loss_critic": critic_loss,  # or any other relevant critic loss
-            "loss_alpha": alpha_loss.detach() if self.learn_entropy_coef else None,
-            "alpha": alpha_t.item(),
+            "loss_critic": critic_loss.detach(),  # or any other relevant critic loss
         }
 
         if self.learn_entropy_coef:
