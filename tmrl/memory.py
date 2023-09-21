@@ -222,6 +222,125 @@ class TorchMemory(Memory, ABC):
         return collate_torch(batch, device)
 
 
+class R2D2Memory(Memory, ABC):
+    """
+        Partial implementation of the `Memory` class collating samples into batched torch tensors.
+
+        .. note::
+           When overriding `__init__`, don't forget to call `super().__init__` in the subclass.
+           Your `__init__` method needs to take at least all the arguments of the superclass.
+        """
+
+    def __init__(self,
+                 device,
+                 nb_steps,
+                 sample_preprocessor: callable = None,
+                 memory_size=1000000,
+                 batch_size=256,
+                 dataset_path="",
+                 crc_debug=False):
+        """
+        Args:
+            device (str): output tensors will be collated to this device
+            nb_steps (int): number of steps per round
+            sample_preprocessor (callable): can be used for data augmentation
+            memory_size (int): size of the circular buffer
+            batch_size (int): batch size of the output tensors
+            dataset_path (str): an offline dataset may be provided here to initialize the memory
+            crc_debug (bool): False usually, True when using CRC debugging of the pipeline
+        """
+        super().__init__(memory_size=memory_size,
+                         batch_size=batch_size,
+                         dataset_path=dataset_path,
+                         nb_steps=nb_steps,
+                         sample_preprocessor=sample_preprocessor,
+                         crc_debug=crc_debug,
+                         device=device)
+        self.previous_episode = None
+        self.last_index = 0
+        self.end_episodes_indices = []
+        self.chosen_episode = None
+        self.burn_ins = (2, 40)
+        self.isNewEpisode = True
+        self.chosen_burn_in = None
+        self.reward_sums = []
+
+    def collate(self, batch, device):
+        return collate_torch(batch, device)
+
+    # potential problem if memory is being trimmed
+    def sample_indices(self):
+        self.end_episodes_indices = [i for i, x in enumerate(self.data[23]) if x]
+        self.reward_sums = [self.data[22][index]['reward_sum'] for index in self.end_episodes_indices] # 22 -> infos
+
+        if len(self.end_episodes_indices) == 0:
+            if self.last_index + self.batch_size > len(self):
+                self.last_index = 0
+                indices = list(i for i in range(len(self) - self.batch_size, len(self) - 1))
+            else:
+                cur_idx = self.last_index
+                self.last_index += self.batch_size
+                indices = list(i for i in range(cur_idx, self.last_index - 1))
+        else:
+            if self.isNewEpisode:
+                # Select a random episode based on reward sums
+                self.chosen_episode = random.choices(self.end_episodes_indices, weights=self.reward_sums, k=1)[0]
+                self.chosen_burn_in = random.randint(self.burn_ins[0], self.burn_ins[1])
+                self.isNewEpisode = False
+
+                # Find the previous episode index (else 0)
+                if self.end_episodes_indices.index(self.chosen_episode) > 0:
+                    previous_episode_index = self.end_episodes_indices.index(self.chosen_episode) - 1
+                    self.previous_episode = self.end_episodes_indices[previous_episode_index]
+                else:
+                    self.previous_episode = 0
+
+                if self.chosen_episode - self.previous_episode > self.batch_size + self.chosen_burn_in:
+                    cur_idx = self.previous_episode + self.chosen_burn_in
+                    self.last_index = cur_idx + self.batch_size
+                    indices = list(i for i in range(cur_idx, self.last_index - 1))
+                else:
+                    self.last_index = self.chosen_episode
+                    indices = list(i for i in range(self.previous_episode, self.chosen_episode - 1))
+            else:
+                # Continue from the last index if not a new episode
+                if self.chosen_episode - self.last_index > self.batch_size:
+                    cur_idx = self.last_index
+                    self.last_index += self.batch_size
+                    indices = list(i for i in range(cur_idx, cur_idx + self.batch_size - 1))
+                else:
+                    if self.chosen_episode - self.previous_episode > self.batch_size:
+                        indices = list(i for i in range(self.chosen_episode - self.batch_size, self.chosen_episode - 1))
+                    else:
+                        indices = list(i for i in range(self.previous_episode, self.chosen_episode - 1))
+                    self.isNewEpisode = True
+                    self.last_index = self.chosen_episode
+
+        while len(indices) < self.batch_size:
+            random_index = random.randint(0, len(self) - 1)
+            indices.append(random_index)
+
+        while len(indices) > self.batch_size:
+            indices.pop()
+
+        if indices is None:
+            raise Exception("Indices cannot be None!")
+        # if len(indices) < self.batch_size - 1:
+        #     raise Exception("Indices cannot be less!")
+
+        indices = tuple(indices)
+
+        return indices
+
+    def sample(self):
+        indices = self.sample_indices()
+        # print(f"indices[0]: {indices[0]}")
+        # print(f"indices[-1]: {indices[-1]}")
+        batch = [self[idx] for idx in indices]
+        batch = self.collate(batch, self.device)
+        return batch
+
+
 def load_and_print_pickle_file(path=r"C:\Users\Yann\Desktop\git\tmrl\data\data.pkl"):  # r"D:\data2020"
     import pickle
     with open(path, 'rb') as f:
