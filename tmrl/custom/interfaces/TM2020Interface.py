@@ -26,7 +26,7 @@ class TM2020Interface(RealTimeGymInterface):
     def __init__(self,
                  img_hist_len: int = 4,
                  gamepad: bool = False,
-                 min_nb_steps_before_failure: int = int(2.5 * 20),
+                 min_nb_steps_before_failure: int = int(3.5 * 20),
                  save_replays: bool = False,
                  grayscale: bool = True,
                  resize_to=(64, 64),

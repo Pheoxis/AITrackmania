@@ -52,7 +52,7 @@ def conv2d_out_dims(conv_layer, h_in, w_in):
 
 
 class CNNModule(nn.Module):
-    def __init__(self, grayscale: bool = cfg.GRAYSCALE, mlp_out_size: int = 256,
+    def __init__(self, grayscale: bool = cfg.GRAYSCALE, mlp_out_size: int = 64,
                  first_out_channels: int = 16, activation=nn.GELU):
         super(CNNModule, self).__init__()
         self.activation = activation
