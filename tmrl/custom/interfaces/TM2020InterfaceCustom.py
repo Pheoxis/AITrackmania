@@ -10,7 +10,7 @@ import config.config_constants as cfg
 
 class TM2020InterfaceCustom(TM2020Interface):
     def __init__(
-            self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(160),
+            self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(200),
             record=False, save_replay: bool = False,
             grayscale: bool = False, resize_to: tuple = (128, 64),
             finish_reward=cfg.REWARD_END_OF_TRACK, constant_penalty: float = 0.25,

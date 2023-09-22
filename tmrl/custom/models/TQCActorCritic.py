@@ -1,336 +1,358 @@
-# Import necessary libraries
+import math
+
 import numpy as np
 import torch
+import config.config_constants as cfg
 import torch.nn.functional as F
 from torch import nn
-<<<<<<< HEAD
-=======
 from torch.autograd import Variable
->>>>>>> origin/main
 from torch.distributions import Normal
 
 from actor import TorchActorModule
-from custom.models.MobileNetV3 import mobilenetv3_small, mobilenetv3_large
 from custom.models.model_blocks import mlp
-
-# Constants
-LOG_STD_MIN = -20
-LOG_STD_MAX = 2
+from custom.models.model_constants import LOG_STD_MIN, LOG_STD_MAX
+from torchrl.modules import NoisyLinear
 
 
-def conv1x1(self, x):
-    x = torch.squeeze(x, dim=2)  # Squeeze the third dimension
-    x = torch.squeeze(x, dim=2)  # Squeeze the fourth dimension
-    return F.conv2d(x, self.conv1x1_weights)
-
-
-def gru(input_size, rnn_size, rnn_len):
+# https://discuss.pytorch.org/t/dropout-in-lstm-during-eval-mode/120177
+def gru(input_size, rnn_size, rnn_len, dropout: float = 0.1):
     num_rnn_layers = rnn_len
     assert num_rnn_layers >= 1
     hidden_size = rnn_size
 
     gru_layers = nn.GRU(
         input_size=input_size, hidden_size=hidden_size, num_layers=num_rnn_layers,
-        bias=True, batch_first=True, dropout=0, bidirectional=False
+        bias=True, batch_first=True, dropout=dropout, bidirectional=False
     )
 
     return gru_layers
 
 
-def lstm(input_size, rnn_size, rnn_len):
+def lstm(input_size, rnn_size, rnn_len, dropout: float = 0.0):
     num_rnn_layers = rnn_len
     assert num_rnn_layers >= 1
     hidden_size = rnn_size
 
-    lstm_layers = nn.GRU(
+    lstm_layers = nn.LSTM(
         input_size=input_size, hidden_size=hidden_size, num_layers=num_rnn_layers,
-        bias=True, batch_first=True, dropout=0, bidirectional=False
+        bias=True, batch_first=True, dropout=dropout, bidirectional=False
     )
 
     return lstm_layers
 
-<<<<<<< HEAD
-=======
 
-# ... (other imports and definitions remain the same)
-def rnn(input_size, rnn_size, rnn_len):
-    num_rnn_layers = rnn_len
-    assert num_rnn_layers >= 1
-    hidden_size = rnn_size
-
-    gru = nn.GRU(
-        input_size=input_size, hidden_size=hidden_size, num_layers=num_rnn_layers,
-        bias=True, batch_first=True, dropout=0, bidirectional=False
-    )
-    return gru
+def conv2d_out_dims(conv_layer, h_in, w_in):
+    if conv_layer.padding == "same":
+        return h_in, w_in
+    h_out = h_in + 2 * conv_layer.padding[0] - conv_layer.dilation[0] * (conv_layer.kernel_size[0] - 1) - 1
+    h_out = math.floor(h_out / conv_layer.stride[0] + 1)
+    w_out = w_in + 2 * conv_layer.padding[1] - conv_layer.dilation[1] * (conv_layer.kernel_size[1] - 1) - 1
+    w_out = math.floor(w_out / conv_layer.stride[1] + 1)
+    return h_out, w_out
 
 
-# def mlp(sizes, activation=nn.ReLU, output_activation=None):
-#     layers = []
-#     for i in range(len(sizes) - 1):
-#         act = activation if i < len(sizes) - 2 else output_activation
-#         layers += [nn.Linear(sizes[i], sizes[i + 1]), act()]
-#     return nn.Sequential(*layers)
-
->>>>>>> origin/main
-def quantile_huber_loss(y_pred, y_target, kappa):
-    # Compute element-wise Huber loss for quantile regression
-    u = y_target - y_pred
-    loss = torch.where(torch.abs(u) < kappa, 0.5 * u ** 2, kappa * (torch.abs(u) - 0.5 * kappa))
-    return loss.mean(dim=-1)
+def init_kaiming(layer):
+    torch.nn.init.kaiming_normal_(layer.weight, mode="fan_in")
+    torch.nn.init.zeros_(layer.bias)
 
 
-class TwinQuantileQFunction(nn.Module):
-<<<<<<< HEAD
-    def __init__(self, action_space, num_quantiles, rnn_size, rnn_len, mlp_sizes, activation, num_classes):
+class CNNModule(nn.Module):
+    def __init__(self, grayscale: bool = cfg.GRAYSCALE, mlp_out_size: int = 256,
+                 first_out_channels: int = 16, activation=nn.LeakyReLU):
+        super(CNNModule, self).__init__()
+        self.activation = activation
+        # ogarnąć to
+        # self.conv_groups = 1 if grayscale else 3
+        self.conv_groups = 2
+        # self.bn_input = nn.BatchNorm2d(1 if grayscale else 3)
+        # self.bn_input = nn.BatchNorm2d(1 if grayscale else 3)
+        self.conv_blocks = nn.ModuleList()
+        self.h_out, self.w_out = cfg.IMG_HEIGHT, cfg.IMG_WIDTH
+        self.conv_blocks_len = int(math.log2(self.h_out) - 2)
+        first_kernel_size = 7  # 7?
+        first_out_channels = first_out_channels
+        first_in_channels = 1 if grayscale else 3
+        first_conv = nn.Conv2d(
+            first_in_channels, first_out_channels, kernel_size=first_kernel_size, stride=1,
+            padding=3
+        )
+        self.conv_blocks.append(first_conv)
+        self.conv_blocks.append(nn.BatchNorm2d(first_out_channels))
+        self.conv_blocks.append(activation())
+        self.h_out, self.w_out = conv2d_out_dims(first_conv, self.h_out, self.w_out)
+        out_channels = first_out_channels
+
+        # Create Conv2d and BatchNorm2d layers
+        for _ in range(self.conv_blocks_len):
+            out_channels *= 2
+            next_conv = nn.Conv2d(
+                out_channels // 2, out_channels, kernel_size=3, stride=1, padding=1, groups=self.conv_groups
+            )
+            self.conv_blocks.append(next_conv)
+            self.h_out, self.w_out = conv2d_out_dims(next_conv, self.h_out, self.w_out)
+            # next_conv = nn.Conv2d(
+            #     out_channels, out_channels, kernel_size=3, stride=1, padding=0, groups=self.conv_groups
+            # )
+            # self.conv_blocks.append(next_conv)
+            # self.h_out, self.w_out = conv2d_out_dims(next_conv, self.h_out, self.w_out)
+            self.conv_blocks.append(nn.BatchNorm2d(out_channels))
+            self.conv_blocks.append(nn.MaxPool2d(kernel_size=2, stride=2))
+            self.h_out //= 2
+            self.w_out //= 2
+            self.conv_blocks.append(activation())
+        self.flatten = nn.Flatten()
+        flat_features = out_channels * self.h_out * self.w_out
+        self.mlp_out_size = mlp_out_size
+        self.fc1 = nn.Linear(in_features=flat_features, out_features=mlp_out_size)
+        self.noise_scale = 0.05
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        for m in self.conv_blocks:
+            if isinstance(m, torch.nn.Conv2d):
+                init_kaiming(m)
+        init_kaiming(self.fc1)
+
+    def forward(self, x):
+        # x = self.bn_input(x)
+
+        # Forward pass through convolutional layers
+        # if self.training:
+        #     noise = torch.rand_like(x)  # values in [0, 1)
+        #     x += noise * self.noise_scale
+
+        for layer in self.conv_blocks:
+            x = F.relu(layer(x))  # 1x3x128x256 => 1x512x3x7
+
+        # Flatten the tensor
+        x = self.flatten(x)  # (batch size, last conv out channels,
+
+        # Forward pass through MLP layers
+        x = self.fc1(x)  # 1x10752
+
+        return x
+
+
+class QRCNNQFunction(nn.Module):
+    # domyślne wartości parametrów muszą się zgadzać
+    def __init__(
+            self, observation_space, action_space, rnn_size=180, rnn_len=2, mlp_branch_sizes=(256, 512, 256),
+            activation=nn.GELU, num_quantiles=25
+    ):
         super().__init__()
-        dim_act = action_space.shape[0]
-        self.mobilenetQ = mobilenetv3_small(num_classes=num_classes)
-        self.gru = gru(43 + self.mobilenetQ.num_classes, rnn_size, rnn_len)
-        self.bn_rnn = nn.BatchNorm1d(rnn_size)
-        self.mlp = mlp([rnn_size + dim_act] + list(mlp_sizes) + [num_quantiles], activation)
+        self.conv_branch = CNNModule(mlp_out_size=16)
+        self.activation = activation()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
+        dim_obs -= math.prod(s for s in observation_space[24].shape)
         self.num_quantiles = num_quantiles
-=======
-    def __init__(self, num_quantiles=3, rnn_size=100, rnn_len=2,
-                 mlp_sizes=(128, 256, 100), activation=nn.GELU, num_classes=8):
-        super().__init__()
-        self.mobilenetQ = mobilenetv3_small(num_classes=num_classes)
-        # self.gru = gru(43 + self.mobilenetQ.num_classes, rnn_size, rnn_len)
-        mlp1_sizes = [43, 128, 64]
-        self.mlp1 = mlp(mlp1_sizes, activation)
-        self.rnn = lstm(mlp1_sizes[-1] + self.mobilenetQ.num_classes, rnn_size, rnn_len)
-        self.mlp2 = mlp([rnn_size + 3] + list(mlp_sizes) + [num_quantiles], activation)
-        self.bn_rnn = nn.BatchNorm1d(rnn_size)
+        dim_act = action_space.shape[0]
+        mlp1_size, mlp2_size, mlp3_size = mlp_branch_sizes
+
+        self.layerNorm = nn.LayerNorm(dim_obs)
+        self.layerNormRNN = nn.LayerNorm(mlp3_size)
+        self.mlp1_lvl1 = nn.Linear(dim_obs, mlp1_size)
+        self.mlp1_lvl2 = nn.Linear(mlp1_size, mlp2_size)
+
+        self.noisy_after_cat = NoisyLinear(
+            mlp2_size + self.conv_branch.mlp_out_size,
+            mlp3_size,
+            device=self.device
+        )
+        self.rnn_block = lstm(mlp3_size, rnn_size, rnn_len)
+        self.mlp_last = nn.Linear(rnn_size + dim_act, mlp3_size)
+
         self.h0 = None
+        self.h1 = None
         self.c0 = None
->>>>>>> origin/main
+        self.c1 = None
         self.rnn_size = rnn_size
         self.rnn_len = rnn_len
 
-    def forward(self, observation, action, save_hidden=False):
-<<<<<<< HEAD
-        self.gru.flatten_parameters()
-=======
-        self.rnn.flatten_parameters()
->>>>>>> origin/main
+    def forward(self, observation, act, save_hidden=False):
+        self.rnn_block.flatten_parameters()
         batch_size = observation[0].shape[0]
-
-        if batch_size == 1:
-            self.bn_rnn.eval()  # Set batch normalization to evaluation mode
-            self.bn_rnn.train(False)
-            mobilenet_input = observation[23][0].permute(0, 3, 1, 2).float()
-            output = self.mobilenetQ(mobilenet_input)
-            observation[23] = output
-        else:
-            self.bn_rnn.train()
+        if type(observation) is tuple:
             observation = list(observation)
-            appended_tensors = []
-            for i, obs in enumerate(observation[23]):
-                obs = torch.unsqueeze(obs, dim=0)
-                mobilenet_input = obs.permute(0, 3, 1, 2).float()
-                output = self.mobilenetQ(mobilenet_input)
-                appended_tensors.append(output)
-            appended_tensor = torch.cat(appended_tensors, dim=0)
-            observation[23] = appended_tensor
 
-<<<<<<< HEAD
-        for index, _ in enumerate(observation):
-            observation[index] = observation[index].view(batch_size, 1, -1)
-
-        if not save_hidden or self.h is None:
-            device = observation[0].device
-            h = torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device)
+        cnn_branch_input = observation[24].float()
+        if batch_size == 1:
+            if not cfg.GRAYSCALE:
+                cnn_branch_input = cnn_branch_input.permute(0, 3, 1, 2)
+            else:
+                cnn_branch_input = torch.unsqueeze(cnn_branch_input, dim=0)
+            conv_branch_out = self.conv_branch(cnn_branch_input)
         else:
-            h = self.h
+            if not cfg.GRAYSCALE:
+                cnn_branch_input = cnn_branch_input.permute(0, 3, 1, 2)
+            else:
+                cnn_branch_input = torch.unsqueeze(cnn_branch_input, dim=0)
+                cnn_branch_input = cnn_branch_input.permute(1, 0, 2, 3)
+            conv_branch_out = self.conv_branch(cnn_branch_input)
 
-            # Concatenate the tensors in obs_seq_resized along the second dimension (sequence_len)
-        obs_seq_cat = torch.cat(observation, -1)
-
-        obs_seq_cat = obs_seq_cat.float()
-        h = h.to(obs_seq_cat.dtype)
-
-        net_out, h = self.gru(obs_seq_cat, h)
-        net_out = net_out[:, -1]
-        net_out = self.bn_rnn(net_out)
-        net_out = torch.cat((net_out, action), -1)
-        quantiles = self.mlp(net_out)
-
-        if save_hidden:
-            self.h = h
-=======
-        # Separate observations at index 23
-        observation_except_23 = observation[:23] + observation[24:]
-
-        for index, _ in enumerate(observation_except_23):
-            observation_except_23[index] = observation_except_23[index].view(batch_size, 1, -1)
+        # Separate observations at index 24
+        observation_except_24 = observation[:24] + observation[25:]
 
         if not save_hidden or self.h0 is None or self.c0 is None:
-            device = observation_except_23[0].device
-            h = Variable(torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device))
-            c = Variable(torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device))
+            device = observation_except_24[0].device
+            h0 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            c0 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            h1 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            c1 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
         else:
-            h = self.h0
-            c = self.c0
+            h0 = self.h0
+            h1 = self.h1
+            c0 = self.c0
+            c1 = self.c1
 
-        # Pack the tensors in observation_except_23 to handle variable sequence lengths
-        obs_seq_cat = torch.cat(observation_except_23, -1)
-        obs_seq_cat = obs_seq_cat.float()
+        for index, _ in enumerate(observation_except_24):
+            observation_except_24[index] = observation_except_24[index].view(batch_size, 1, -1)
 
-        mlp1_out = self.mlp1(obs_seq_cat)
+        # Pack the tensors in observation_except_24 to handle variable sequence lengths
+        obs_seq_cat = torch.cat(observation_except_24, -1)
+        obs_seq_cat = obs_seq_cat.view(batch_size, -1)
 
-        # Append the output of mlp1 with observation at index 23
-        mlp1_mobile_cat = torch.cat([mlp1_out, observation[23].unsqueeze(1)], dim=-1)
+        layer_norm_out = self.layerNorm(obs_seq_cat)
+        mlp1_lvl1_out = self.activation(self.mlp1_lvl1(layer_norm_out))
+        mlp1_lvl2_out = self.activation(self.mlp1_lvl2(mlp1_lvl1_out))
 
-        # Pass the packed sequence through the GRU
-        net_out, (h, c) = self.rnn(mlp1_mobile_cat, (h, c))
+        mlp_after_cnn_out = torch.cat([mlp1_lvl2_out, conv_branch_out], dim=-1)
 
-        net_out = net_out[:, -1]
-        net_out = self.bn_rnn(net_out)  # BatchNormalization for RNN output
+        noisy_out = self.activation(self.noisy_after_cat(mlp_after_cnn_out))
+        layerNormRNN_out = self.layerNormRNN(noisy_out)
+        lstm_out, (h0, c0) = self.rnn_block(layerNormRNN_out, (h0, c0))
 
-        net_out = torch.cat((net_out, action), -1)
-        quantiles = self.mlp2(net_out)
+        lstm_act_out = torch.cat([lstm_out, act], dim=-1)
+
+        q = self.activation(self.mlp_last(lstm_act_out)) + mlp1_lvl1_out
 
         if save_hidden:
-            self.h0 = h
-            self.c0 = c
->>>>>>> origin/main
+            self.h0 = h0
+            self.h1 = h1
+            self.c0 = c0
+            self.c1 = c1
 
-        return quantiles
+        return torch.squeeze(q, -1)
 
 
-class TQCSquashedActorMobileNetV3(TorchActorModule):
+class SquashedActorQRCNN(TorchActorModule):
+    # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=100, rnn_len=2,
-<<<<<<< HEAD
-            mlp_sizes=(128, 256, 256, 100), activation=nn.ReLU, num_classes=85
-=======
-            mlp_sizes=(128, 256, 100), activation=nn.GELU, num_classes=8
->>>>>>> origin/main
+            self, observation_space, action_space, rnn_size=180, rnn_len=2, mlp_branch_sizes=(256, 512, 256),
+            activation=nn.GELU
     ):
         super().__init__(
             observation_space, action_space
         )
-<<<<<<< HEAD
-        self.mobilenetSquashed = mobilenetv3_large(num_classes=num_classes)
+        self.conv_branch = CNNModule(mlp_out_size=16)
+        self.activation = activation()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
+        dim_obs -= math.prod(s for s in observation_space[24].shape)
         dim_act = action_space.shape[0]
-        self.gru = gru(43 + self.mobilenetSquashed.num_classes, rnn_size, rnn_len)
-        self.bn_rnn = nn.BatchNorm1d(rnn_size)
-        self.mlp = mlp([rnn_size + dim_act - 3] + list(mlp_sizes) + [100], activation)
-=======
-        self.mobilenetSquashed = mobilenetv3_small(num_classes=num_classes)
-        # dim_obs = sum(prod(s for s in space.shape) for space in observation_space)
-        # tm = observation_space.spaces
-        # dim_obs = dim_obs - prod(observation_space.spaces[3].shape) + self.mobilenet.num_classes
-        dim_act = action_space.shape[0]
-        # self.gru = gru(43 + self.mobilenetSquashed.num_classes, rnn_size, rnn_len)
-        self.bn_rnn = nn.BatchNorm1d(rnn_size)
-        mlp1_sizes = [43, 128, 64]
-        self.mlp1 = mlp(mlp1_sizes, activation)
-        self.rnn = lstm(mlp1_sizes[-1] + self.mobilenetSquashed.num_classes, rnn_size, rnn_len)
-        self.mlp2 = mlp([rnn_size + dim_act - 3] + list(mlp_sizes), activation)
->>>>>>> origin/main
-        self.mu_layer = nn.Linear(mlp_sizes[-1], dim_act)
-        self.log_std_layer = nn.Linear(mlp_sizes[-1], dim_act)
+        mlp1_size, mlp2_size, mlp3_size = mlp_branch_sizes
+
+        self.layerNorm = nn.LayerNorm(dim_obs)
+        self.layerNormRNN = nn.LayerNorm(mlp3_size)
+        self.mlp1_lvl1 = nn.Linear(dim_obs, mlp1_size)
+        self.mlp1_lvl2 = nn.Linear(mlp1_size, mlp2_size)
+        self.noisy_after_cat = NoisyLinear(
+            mlp2_size + self.conv_branch.mlp_out_size,  # + self.conv_branch2.mlp_out_size,
+            mlp3_size,
+            device=self.device,
+            std_init=0.02
+        )
+        self.rnn_block = lstm(mlp3_size, rnn_size, rnn_len)
+        self.mlp_last = nn.Linear(rnn_size, mlp3_size)
+
+        self.mu_layer = nn.Linear(mlp3_size, dim_act)
+        self.log_std_layer = nn.Linear(mlp3_size, dim_act)
         self.act_limit = action_space.high[0]
         self.log_std_min = LOG_STD_MIN
         self.log_std_max = LOG_STD_MAX
         self.squash_correction = 2 * (np.log(2) - np.log(self.act_limit))
-<<<<<<< HEAD
-        self.h = None
-=======
         self.h0 = None
+        self.h1 = None
         self.c0 = None
->>>>>>> origin/main
+        self.c1 = None
         self.rnn_size = rnn_size
         self.rnn_len = rnn_len
-        self.conv1x1_weights = nn.Parameter(torch.randn(rnn_size, 1, 1))
 
     def forward(self, observation, test=False, with_logprob=True, save_hidden=False):
-        # worker: list of 26 elements
-        # trainer: tuple of 27 elements of (256, x, y, z)
-        self.gru.flatten_parameters()
-
-        # Convert single observation to a batch if needed
-        # if len(observation[0].shape) == 3:
-        #    observation = [obs.unsqueeze(0) for obs in observation]
-
+        self.rnn_block.flatten_parameters()
         batch_size = observation[0].shape[0]
 
-        if batch_size == 1:
-            self.bn_rnn.eval()  # Set batch normalization to evaluation mode
-            self.bn_rnn.train(False)
-            mobilenet_input = observation[23][0].permute(0, 3, 1, 2).float()
-            output = self.mobilenetSquashed(mobilenet_input)
-            observation[23] = output
-        else:
-            self.bn_rnn.train()
+        if type(observation) is tuple:
             observation = list(observation)
-            appended_tensors = []
-            for i, obs in enumerate(observation[23]):
-                obs = torch.unsqueeze(obs, dim=0)
-                mobilenet_input = obs.permute(0, 3, 1, 2).float()
-                output = self.mobilenetSquashed(mobilenet_input)
-                appended_tensors.append(output)
-            appended_tensor = torch.cat(appended_tensors, dim=0)
-            observation[23] = appended_tensor
-
-<<<<<<< HEAD
-        for index, _ in enumerate(observation):
-            observation[index] = observation[index].view(batch_size, 1, -1)
-
-        if not save_hidden or self.h is None:
-            device = observation[0].device
-            h = torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device)
+        cnn_branch_input = observation[24].float()
+        if batch_size == 1:
+            if not cfg.GRAYSCALE:
+                cnn_branch_input = cnn_branch_input.permute(0, 3, 1, 2)
+            else:
+                cnn_branch_input = torch.unsqueeze(cnn_branch_input, dim=0)
+            conv_branch_out = self.conv_branch(cnn_branch_input)
         else:
-            h = self.h
+            if not cfg.GRAYSCALE:
+                cnn_branch_input = cnn_branch_input.permute(0, 3, 1, 2)
+            else:
+                cnn_branch_input = torch.unsqueeze(cnn_branch_input, dim=0)
+                cnn_branch_input = cnn_branch_input.permute(1, 0, 2, 3)
+            conv_branch_out = self.conv_branch(cnn_branch_input)
 
-        # Pack the tensors in obs_seq_resized to handle variable sequence lengths
-        obs_seq_cat = torch.cat(observation, -1)
-
-        obs_seq_cat = obs_seq_cat.float()
-        h = h.to(obs_seq_cat.dtype)
-
-        # Pass the packed sequence through the GRU
-        net_out, h = self.gru(obs_seq_cat, h)
-=======
-        observation_except_23 = observation[:23] + observation[24:]
-
-        for index, _ in enumerate(observation_except_23):
-            observation_except_23[index] = observation_except_23[index].view(batch_size, 1, -1)
+            # Separate observations at index 24
+        observation_except_24 = observation[:24] + observation[25:]
 
         if not save_hidden or self.h0 is None or self.c0 is None:
-            device = observation_except_23[0].device
-            h = Variable(torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device))
-            c = Variable(torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device))
+            device = observation_except_24[0].device
+            h0 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            c0 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            h1 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
+            c1 = Variable(
+                torch.zeros((self.rnn_len, self.rnn_size), device=device)
+            )
         else:
-            h = self.h0
-            c = self.c0
+            h0 = self.h0
+            h1 = self.h1
+            c0 = self.c0
+            c1 = self.c1
 
-        # Pack the tensors in observation_except_23 to handle variable sequence lengths
-        obs_seq_cat = torch.cat(observation_except_23, -1)
-        obs_seq_cat = obs_seq_cat.float()
+        for index, _ in enumerate(observation_except_24):
+            observation_except_24[index] = observation_except_24[index].view(batch_size, 1, -1)
 
-        mlp1_out = self.mlp1(obs_seq_cat)
+        # Pack the tensors in observation_except_24 to handle variable sequence lengths
+        obs_seq_cat = torch.cat(observation_except_24, -1)
+        obs_seq_cat = obs_seq_cat.view(batch_size, -1)
 
-        # Append the output of mlp1 with observation at index 23
-        mlp1_mobile_cat = torch.cat([mlp1_out, observation[23].unsqueeze(1)], dim=-1)
+        layer_norm_out = self.layerNorm(obs_seq_cat)
+        mlp1_lvl1_out = self.activation(self.mlp1_lvl1(layer_norm_out))
 
-        # Pass the packed sequence through the GRU
-        net_out, (h, c) = self.rnn(mlp1_mobile_cat, (h, c))
->>>>>>> origin/main
+        mlp_after_cnn_out = torch.cat([mlp1_lvl1_out, conv_branch_out], dim=-1)
 
-        # Get the last step output of the GRU
-        net_out = net_out[:, -1]
-        net_out = self.bn_rnn(net_out)
+        noisy_out = self.activation(self.noisy_after_cat(mlp_after_cnn_out))
 
-        # Process the output from MobileNetV3
-<<<<<<< HEAD
-        net_out = self.mlp(net_out)
-=======
-        net_out = self.mlp2(net_out)
->>>>>>> origin/main
-        mu = self.mu_layer(net_out)
-        log_std = self.log_std_layer(net_out)
+        layerNormRNN_out = self.layerNormRNN(noisy_out)
+        lstm_out, (h0, c0) = self.rnn_block(noisy_out, (h0, c0))
+
+        model_out = self.activation(self.mlp_last(lstm_out)) + mlp1_lvl1_out
+
+        mu = self.mu_layer(model_out)
+        log_std = self.log_std_layer(model_out)
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         std = torch.exp(log_std)
 
@@ -347,7 +369,7 @@ class TQCSquashedActorMobileNetV3(TorchActorModule):
             # NOTE: The correction formula is a little bit magic. To get an understanding
             # of where it comes from, check out the original SAC paper (arXiv 1801.01290)
             # and look in appendix C. This is a more numerically-stable equivalent to Eq 21.
-            # Try deriving it yourself as a (very difficult) exercise. :)
+            # Try deriving it yourself as a (very difficult) exercise. 🙂
             logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
             logp_pi -= (2 * (np.log(2) - pi_action - F.softplus(-2 * pi_action))).sum(axis=1)
         else:
@@ -359,214 +381,38 @@ class TQCSquashedActorMobileNetV3(TorchActorModule):
         pi_action = pi_action.squeeze()
 
         if save_hidden:
-<<<<<<< HEAD
-            self.h = h
-=======
-            self.h0 = h
-            self.c0 = c
->>>>>>> origin/main
+            self.h0 = h0
+            self.h1 = h1
+            self.c0 = c0
+            self.c1 = c1
 
         return pi_action, logp_pi
 
-    def act(self, obs, test=False):
-        obs_seq = list(o.view(1, *o.shape) for o in obs)  # artificially add sequence dimension
+    def act(self, obs: tuple, test=False):
+        obs_seq = list(obs)
+        # obs_seq = list(o.view(1, *o.shape) for o in obs)  # artificially add sequence dimension
         with torch.no_grad():
             a, _ = self.forward(observation=obs_seq, test=test, with_logprob=False, save_hidden=True)
             return a.cpu().numpy()
 
-    def compute_tqc_loss(self, obs_seq, actions, rewards, next_obs_seq, dones, discount_factor, kappa):
-        next_actions, next_logp_pi = self.forward(next_obs_seq, with_logprob=True)
-        target_quantiles = self.q1(next_obs_seq, next_actions)
 
-        # ... (calculate quantile targets using Bellman equation)
-
-        q1_values = self.q1(obs_seq, actions)
-        q2_values = self.q2(obs_seq, actions)
-
-        # Compute TQC loss using quantile Huber loss
-        q1_loss = quantile_huber_loss(target_quantiles, q1_values, kappa)
-        q2_loss = quantile_huber_loss(target_quantiles, q2_values, kappa)
-
-        return q1_loss, q2_loss
-
-
-<<<<<<< HEAD
-class MobileNetQuantileQFunction(nn.Module):
-    def __init__(self, act_space, rnn_size=100, rnn_len=2, mlp_sizes=(128, 256, 256, 100),
-                 activation=nn.ReLU, num_classes=85, num_quantiles=3):
-        super().__init__()
-        #   dim_obs = sum(np.prod(space.shape) for space in obs_space)
-        dim_act = act_space.shape[0]
-        self.mobilenetQ = mobilenetv3_small(num_classes=num_classes)
-        self.gru = gru(43 + self.mobilenetQ.num_classes, rnn_size, rnn_len)
-        self.bn_rnn = nn.BatchNorm1d(rnn_size)
-        self.mlp = mlp([rnn_size + dim_act] + list(mlp_sizes) + [num_quantiles], activation)
-        self.h = None
-=======
-# residual connection between
-class MobileNetQuantileQFunction(nn.Module):
-    def __init__(self, rnn_size=100, rnn_len=2, mlp_sizes=(128, 256, 100),
-                 activation=nn.GELU, num_classes=8, num_quantiles=3):
-        super().__init__()
-        self.mobilenetQ = mobilenetv3_small(num_classes=num_classes)
-        # self.gru = gru(43 + self.mobilenetQ.num_classes, rnn_size, rnn_len)
-        mlp1_sizes = [43, 128, 64]
-        self.mlp1 = mlp(mlp1_sizes, activation)
-        self.rnn = lstm(mlp1_sizes[-1] + self.mobilenetQ.num_classes, rnn_size, rnn_len)
-        self.mlp2 = mlp([rnn_size + 3] + list(mlp_sizes) + [num_quantiles], activation)
-        self.bn_rnn = nn.BatchNorm1d(rnn_size)
-        self.h0 = None
-        self.c0 = None
->>>>>>> origin/main
-        self.rnn_size = rnn_size
-        self.rnn_len = rnn_len
-
-    def forward(self, observation, act, save_hidden=False):
-        self.gru.flatten_parameters()
-        batch_size = observation[0].shape[0]
-
-        if batch_size == 1:
-            self.bn_rnn.eval()  # Set batch normalization to evaluation mode
-            self.bn_rnn.train(False)
-            mobilenet_input = observation[23][0].permute(0, 3, 1, 2).float()
-            output = self.mobilenetQ(mobilenet_input)
-            observation[23] = output
-        else:
-            self.bn_rnn.train()
-            observation = list(observation)
-            appended_tensors = []
-            for i, obs in enumerate(observation[23]):
-                obs = torch.unsqueeze(obs, dim=0)
-                mobilenet_input = obs.permute(0, 3, 1, 2).float()
-                output = self.mobilenetQ(mobilenet_input)
-                appended_tensors.append(output)
-            appended_tensor = torch.cat(appended_tensors, dim=0)
-            observation[23] = appended_tensor
-
-<<<<<<< HEAD
-        for index, _ in enumerate(observation):
-            observation[index] = observation[index].view(batch_size, 1, -1)
-
-        if not save_hidden or self.h is None:
-            device = observation[0].device
-            h = torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device)
-        else:
-            h = self.h
-
-        # Concatenate the tensors in obs_seq_resized along the second dimension (sequence_len)
-        obs_seq_cat = torch.cat(observation, -1)
-
-        obs_seq_cat = obs_seq_cat.float()
-        h = h.to(obs_seq_cat.dtype)
-
-        # Pass the packed sequence through the GRU
-        net_out, h = self.gru(obs_seq_cat, h)
-        net_out = net_out[:, -1]
-        net_out = self.bn_rnn(net_out)  # BatchNormalization for RNN output
-        net_out = torch.cat((net_out, act), -1)
-        q = self.mlp(net_out)
-
-        if save_hidden:
-            self.h = h
-
-        return torch.squeeze(q, -1)
-=======
-            # Separate observations at index 23
-            observation_except_23 = observation[:23] + observation[24:]
-
-            for index, _ in enumerate(observation_except_23):
-                observation_except_23[index] = observation_except_23[index].view(batch_size, 1, -1)
-
-            if not save_hidden or self.h0 is None or self.c0 is None:
-                device = observation_except_23[0].device
-                h = Variable(torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device))
-                c = Variable(torch.zeros((self.rnn_len, batch_size, self.rnn_size), device=device))
-            else:
-                h = self.h0
-                c = self.c0
-
-            # Pack the tensors in observation_except_23 to handle variable sequence lengths
-            obs_seq_cat = torch.cat(observation_except_23, -1)
-            obs_seq_cat = obs_seq_cat.float()
-
-            mlp1_out = self.mlp1(obs_seq_cat)
-
-            # Append the output of mlp1 with observation at index 23
-            mlp1_mobile_cat = torch.cat([mlp1_out, observation[23].unsqueeze(1)], dim=-1)
-
-            # Pass the packed sequence through the GRU
-            net_out, (h, c) = self.rnn(mlp1_mobile_cat, (h, c))
-
-            net_out = net_out[:, -1]
-            net_out = self.bn_rnn(net_out)  # BatchNormalization for RNN output
-
-            net_out = torch.cat((net_out, act), -1)
-            q = self.mlp2(net_out)
-
-            if save_hidden:
-                self.h0 = h
-                self.c0 = c
-
-            return torch.squeeze(q, -1)
->>>>>>> origin/main
-
-
-class QuantileActorCritic(nn.Module):
+class QRCNNActorCritic(nn.Module):
+    # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=100, rnn_len=2,
-<<<<<<< HEAD
-            mlp_sizes=(128, 256, 256, 100), activation=nn.ReLU, num_classes=85, num_quantiles=3
-=======
-            mlp_sizes=(128, 256, 100), activation=nn.GELU, num_classes=8, num_quantiles=3
->>>>>>> origin/main
+            self, observation_space, action_space, rnn_size=180, rnn_len=2, mlp_branch_sizes=(256, 256),
+            activation=nn.GELU, num_quantiles=25
     ):
         super().__init__()
-        self.actor = TQCSquashedActorMobileNetV3(
-            observation_space, action_space, rnn_size=rnn_size, rnn_len=rnn_len,
-            mlp_sizes=mlp_sizes, activation=activation, num_classes=num_classes
+
+        # act_limit = action_space.high[0]
+
+        # build policy and value functions
+        self.actor = SquashedActorQRCNN(
+            observation_space, action_space, rnn_size, rnn_len, mlp_branch_sizes, activation
         )
-        self.q1 = TwinQuantileQFunction(
-            action_space, num_quantiles=num_quantiles, rnn_size=rnn_size, rnn_len=rnn_len,
-            mlp_sizes=mlp_sizes, activation=activation, num_classes=num_classes
+        self.q1 = QRCNNQFunction(
+            observation_space, action_space, rnn_size, rnn_len, mlp_branch_sizes, activation, num_quantiles
         )
-        self.q2 = TwinQuantileQFunction(
-            action_space, num_quantiles=num_quantiles, rnn_size=rnn_size, rnn_len=rnn_len,
-            mlp_sizes=mlp_sizes, activation=activation, num_classes=num_classes
+        self.q2 = QRCNNQFunction(
+            observation_space, action_space, rnn_size, rnn_len, mlp_branch_sizes, activation, num_quantiles
         )
-<<<<<<< HEAD
-# def compute_quantile_targets(self, obs_seq, actions, rewards, next_obs_seq, dones, discount_factor):
-#     with torch.no_grad():
-#         next_actions, _ = self.actor.forward(next_obs_seq)
-#         q1_targets_next = self.q1.forward(next_obs_seq, next_actions)
-#         q2_targets_next = self.q2.forward(next_obs_seq, next_actions)
-#         q_targets_next = torch.min(q1_targets_next, q2_targets_next)
-#         quantile_rewards = rewards.unsqueeze(1) + discount_factor * (1 - dones.unsqueeze(1)) * q_targets_next
-#     return quantile_rewards
-#
-# def huber_loss(self, errors, kappa=1.0):
-#     return torch.where(torch.abs(errors) <= kappa, 0.5 * errors ** 2, kappa * (torch.abs(errors) - 0.5 * kappa))
-#
-# def update_quantile_q_functions(self, obs_seq, actions, quantile_targets, kappa=1.0):
-#     q1_predictions = self.q1.forward(obs_seq, actions)
-#     q2_predictions = self.q2.forward(obs_seq, actions)
-#
-#     quantile_errors1 = quantile_targets.unsqueeze(2) - q1_predictions.unsqueeze(1)
-#     quantile_errors2 = quantile_targets.unsqueeze(2) - q2_predictions.unsqueeze(1)
-#
-#     huber_loss1 = self.huber_loss(quantile_errors1, kappa)
-#     huber_loss2 = self.huber_loss(quantile_errors2, kappa)
-#
-#     q1_loss = huber_loss1.mean(dim=2).sum(dim=1).mean()
-#     q2_loss = huber_loss2.mean(dim=2).sum(dim=1).mean()
-#
-#     self.q1_optimizer.zero_grad()
-#     q1_loss.backward()
-#     self.q1_optimizer.step()
-#
-#     self.q2_optimizer.zero_grad()
-#     q2_loss.backward()
-#     self.q2_optimizer.step()
-#
-#     return q1_loss.item(), q2_loss.item()
-=======
->>>>>>> origin/main

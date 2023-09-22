@@ -7,11 +7,11 @@ if platform.system() == "Windows":
 
     def control_gamepad(gamepad, control):
         assert all(-1.0 <= c <= 1.0 for c in control), "This function accepts only controls between -1.0 and 1.0"
-        if control[0] > 0:  # gas
+        if control[0] > - 0.5:  # gas
             gamepad.right_trigger_float(value_float=control[0])
         else:
             gamepad.right_trigger_float(value_float=0.0)
-        if control[1] > 0:  # break
+        if control[1] > 0.75:  # break
             gamepad.left_trigger_float(value_float=control[1])
         else:
             gamepad.left_trigger_float(value_float=0.0)

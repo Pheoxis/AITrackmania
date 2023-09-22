@@ -17,7 +17,6 @@ from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
 from custom.models.MobileNetActorCritic import MobileNetActorCritic, SquashedActorMobileNetV3
-from custom.models.TQCActorCritic import QuantileActorCritic, TQCSquashedActorMobileNetV3
 from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
 from custom.models.VanillaColorCNNActorCritic import VanillaColorCNNActorCritic, SquashedGaussianVanillaColorCNNActor
 from training_offline import TorchTrainingOffline
@@ -28,7 +27,6 @@ from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_prep
     obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
 from envs import GenericGymEnv
 from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
-from custom.custom_algorithms import  TQCAgent
 from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
 from custom.custom_algorithms import TQCAgent as TQC_Agent
 from custom.custom_checkpoints import update_run_instance
@@ -36,11 +34,8 @@ from util import partial
 
 ALG_CONFIG = cfg.TMRL_CONFIG["ALG"]
 ALG_NAME = ALG_CONFIG["ALGORITHM"]
-<<<<<<< HEAD
-assert ALG_NAME in ["SAC", "REDQSAC","TQC"], f"If you wish to implement {ALG_NAME}, do not use 'ALG' in config.json for that."
-=======
-assert ALG_NAME in ["SAC", "REDQSAC", "TQC"], f"If you wish to implement {ALG_NAME}, do not use 'ALG' in config.json for that."
->>>>>>> origin/main
+assert ALG_NAME in ["SAC", "REDQSAC",
+                    "TQC"], f"If you wish to implement {ALG_NAME}, do not use 'ALG' in config.json for that."
 
 # MODEL, GYM ENVIRONMENT, REPLAY MEMORY AND TRAINING: ===========
 
@@ -57,12 +52,6 @@ else:
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
         TRAIN_MODEL = MobileNetActorCritic
         POLICY = SquashedActorMobileNetV3
-<<<<<<< HEAD
-    elif cfg.PRAGMA_TQC:
-        assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = QuantileActorCritic
-        POLICY = TQCSquashedActorMobileNetV3
-=======
     elif cfg.PRAGMA_BEST:
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
         TRAIN_MODEL = RCNNActorCritic
@@ -75,7 +64,6 @@ else:
         assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
         TRAIN_MODEL = mtqc.QRCNNActorCritic
         POLICY = mtqc.SquashedActorQRCNN
->>>>>>> origin/main
     else:
         assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
@@ -90,15 +78,12 @@ if cfg.PRAGMA_LIDAR:
     else:
         INT = partial(TM2020InterfaceLidar, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
 else:
-<<<<<<< HEAD
-    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_TQC:
-=======
     if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC or cfg.PRAGMA_MBEST_TQC:
->>>>>>> origin/main
         INT = partial(
             TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
             grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
-            crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY
+            crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
+            min_nb_steps_before_failure=200 if cfg.MAP_NAME == "tmrl_test" else 120
         )
     else:
         INT = partial(TM2020Interface,
@@ -150,16 +135,10 @@ if cfg.PRAGMA_LIDAR:
         else:
             MEM = MemoryTMLidar
 else:
-<<<<<<< HEAD
-    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_TQC:
-        MEM = MemoryTMMobileNet
-=======
     if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC or cfg.PRAGMA_MBEST_TQC:
         MEM = MemoryTMBest
->>>>>>> origin/main
     else:
         MEM = MemoryTMFull
-
 
 MEMORY = partial(MEM,
                  memory_size=cfg.TMRL_CONFIG["MEMORY_SIZE"],
@@ -188,11 +167,7 @@ if ALG_NAME == "SAC":
     )
 elif ALG_NAME == "TQC":
     AGENT = partial(
-<<<<<<< HEAD
-        TQCAgent,
-=======
         TQC_Agent,
->>>>>>> origin/main
         device='cuda' if cfg.CUDA_TRAINING else 'cpu',
         model_cls=TRAIN_MODEL,
         lr_actor=ALG_CONFIG["LR_ACTOR"],
@@ -202,16 +177,10 @@ elif ALG_NAME == "TQC":
         polyak=ALG_CONFIG["POLYAK"],
         learn_entropy_coef=ALG_CONFIG["LEARN_ENTROPY_COEF"],  # False for SAC v2 with no temperature autotuning
         target_entropy=ALG_CONFIG["TARGET_ENTROPY"],  # None for automatic
-<<<<<<< HEAD
-        alpha=ALG_CONFIG["ALPHA"]  # inverse of reward scale
-    )
-
-=======
         alpha=ALG_CONFIG["ALPHA"],  # inverse of reward scale
         top_quantiles_to_drop=ALG_CONFIG["TOP_QUANTILES_TO_DROP"],
         quantiles_number=ALG_CONFIG["QUANTILES_NUMBER"]
     )
->>>>>>> origin/main
 else:
     AGENT = partial(
         REDQ_Agent,
