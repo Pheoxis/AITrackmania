@@ -129,7 +129,7 @@ class TrainingOffline:
 
                 if self.total_updates == 0:
                     logging.info(f"starting training")
-                if batch_index % 4 == 0:
+                if batch_index % 16 == 0:
                     logging.info(f"batch {batch_index} out of {self.steps} has finished")
                 stats_training_dict = self.agent.train(batch)
 
@@ -166,6 +166,10 @@ class TrainingOffline:
             if self.profiling:
                 pro.stop()
                 logging.info(pro.output_text(unicode=True, color=False, show_all=True))
+
+        if len(self.memory.end_episodes_indices) > 1:
+            print(f"end_episodes_indices: {self.memory.end_episodes_indices}")
+            print(f"reward_sums: {self.memory.reward_sums}")
 
         self.epoch += 1
         return stats

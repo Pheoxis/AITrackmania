@@ -5,31 +5,32 @@ import rtgym
 
 # local imports
 import config.config_constants as cfg
+import custom.models.BestActorCriticTQC as tqc
+import custom.models.MaybeBetterTQC as mtqc
+from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
+from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
+from custom.custom_algorithms import TQCAgent as TQC_Agent
+from custom.custom_checkpoints import update_run_instance
+from custom.custom_memories import MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, \
+    get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs, MemoryTMBest, \
+    get_local_buffer_sample_mobilenet, MemoryTMFull, MemoryR2D2
+from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
+    obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
+from custom.interfaces.TM2020InterfaceTQC import TM2020InterfaceTQC
 from custom.interfaces.TM2020Interface import TM2020Interface
+from custom.interfaces.TM2020InterfaceCustom import TM2020InterfaceCustom
 from custom.interfaces.TM2020InterfaceLidar import TM2020InterfaceLidar
 from custom.interfaces.TM2020InterfaceLidarProgress import TM2020InterfaceLidarProgress
 from custom.interfaces.TM2020InterfaceTrackMap import TM2020InterfaceTrackMap
-from custom.interfaces.TM2020InterfaceCustom import TM2020InterfaceCustom
 from custom.models.BestActorCritic import RCNNActorCritic, SquashedActorRCNN
-import custom.models.BestActorCriticTQC as tqc
-import custom.models.MaybeBetterTQC as mtqc
-from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
-from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
 from custom.models.MobileNetActorCritic import MobileNetActorCritic, SquashedActorMobileNetV3
+from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
+from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
 from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
 from custom.models.VanillaColorCNNActorCritic import VanillaColorCNNActorCritic, SquashedGaussianVanillaColorCNNActor
-from training_offline import TorchTrainingOffline
-from custom.custom_memories import MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, \
-    get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs, MemoryTMBest, \
-    get_local_buffer_sample_mobilenet, MemoryTMFull
-from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
-    obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
 from envs import GenericGymEnv
-from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
-from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
-from custom.custom_algorithms import TQCAgent as TQC_Agent
-from custom.custom_checkpoints import update_run_instance
+from training_offline import TorchTrainingOffline
 from util import partial
 
 ALG_CONFIG = cfg.TMRL_CONFIG["ALG"]
@@ -80,11 +81,18 @@ if cfg.PRAGMA_LIDAR:
 else:
     if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC or cfg.PRAGMA_MBEST_TQC:
         INT = partial(
-            TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
+            TM2020InterfaceTQC, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
             grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
             crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
+            checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
             min_nb_steps_before_failure=200 if cfg.MAP_NAME == "tmrl_test" else 120
         )
+        # INT = partial(
+        #     TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
+        #     grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
+        #     crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
+        #     min_nb_steps_before_failure=200 if cfg.MAP_NAME == "tmrl_test" else 120
+        # )
     else:
         INT = partial(TM2020Interface,
                       img_hist_len=cfg.IMG_HIST_LEN,
@@ -135,8 +143,10 @@ if cfg.PRAGMA_LIDAR:
         else:
             MEM = MemoryTMLidar
 else:
-    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC or cfg.PRAGMA_MBEST_TQC:
+    if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
         MEM = MemoryTMBest
+    elif cfg.PRAGMA_MBEST_TQC:
+        MEM = MemoryR2D2
     else:
         MEM = MemoryTMFull
 

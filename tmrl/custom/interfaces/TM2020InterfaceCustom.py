@@ -10,10 +10,10 @@ import config.config_constants as cfg
 
 class TM2020InterfaceCustom(TM2020Interface):
     def __init__(
-            self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(200),
+            self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(160),
             record=False, save_replay: bool = False,
             grayscale: bool = False, resize_to: tuple = (128, 64),
-            finish_reward=cfg.REWARD_END_OF_TRACK, constant_penalty: float = 0.25,
+            finish_reward=cfg.REWARD_END_OF_TRACK, constant_penalty: float = 0.05,
             crash_penalty=cfg.CRASH_PENALTY
     ):
         super().__init__(
@@ -79,9 +79,9 @@ class TM2020InterfaceCustom(TM2020Interface):
         else:
             w, h = cfg.WINDOW_HEIGHT, cfg.WINDOW_WIDTH
         if self.grayscale:
-            img = spaces.Box(low=0.0, high=255.0, shape=(h, w))  # cv2 grayscale images are (h, w)
+            img = spaces.Box(low=0.0, high=255.0, shape=(self.img_hist_len, h, w))  # cv2 grayscale images are (h, w)
         else:
-            img = spaces.Box(low=0.0, high=255.0, shape=(h, w, 3))  # cv2 images are (h, w, c)
+            img = spaces.Box(low=0.0, high=255.0, shape=(self.img_hist_len, h, w, 3))  # cv2 images are (h, w, c)
 
         return spaces.Tuple(
             (
@@ -109,8 +109,11 @@ class TM2020InterfaceCustom(TM2020Interface):
             )
         )
 
-    def grab_data_and_img(self):
+    def grab_data_and_img(self, percentage_to_cut: float = 0.2):
         img = self.window_interface.screenshot()[:, :, :3]  # BGR ordering
+        height, _ = img.shape[:2]
+        cut_height = int(height * percentage_to_cut)
+        img = img[cut_height:, :]
         if self.resize_to is not None:  # cv2.resize takes dim as (width, height)
             img = cv2.resize(img, self.resize_to)
         if self.grayscale:
@@ -120,6 +123,8 @@ class TM2020InterfaceCustom(TM2020Interface):
         data = self.grab_data()
         # print(f"data: {data}")
         self.img = img  # for render()
+        # cv2.imshow("Environment", img)
+        # cv2.waitKey(1)
         return data, img
 
     def grab_data(self):
@@ -139,7 +144,7 @@ class TM2020InterfaceCustom(TM2020Interface):
         acceleration = np.array([data[9]], dtype='float32')
         jerk = np.array([data[10]], dtype='float32')
 
-        race_progress = np.array([data[1]], dtype='float32')
+        # race_progress = np.array([data[1]], dtype='float32')
 
         input_steer = np.array([data[5]], dtype='float32')
         input_gas_pedal = np.array([data[6]], dtype='float32')
@@ -168,26 +173,26 @@ class TM2020InterfaceCustom(TM2020Interface):
         crashed = np.array([data[32]], dtype='int16')
         end_of_track = bool(data[8])
 
-        info = {}
-        reward = 0.0
+        rew, terminated, failure_counter, race_progress, reward_sum = self.reward_function.compute_reward(
+            pos=np.array([data[2], data[3], data[4]]),  # position x,y,z
+            crashed=bool(crashed),  # distance=bool(input_gas_pedal), brake_input=bool(input_brake),
+            speed=speed[0]
+        )
+
         if end_of_track:
-            terminated = True
-            reward += self.finish_reward
+            terminated = True  # sprawdzić czy to wgl jest wywoływane
+            rew += self.finish_reward
+            reward_sum += self.finish_reward
             failure_counter = 0
             if self.save_replays:
                 mouse_save_replay_tm20(True)
-        else:
-            rew, terminated, failure_counter, race_progress = self.reward_function.compute_reward(
-                pos=np.array([data[2], data[3], data[4]]),  # position x,y,z
-                crashed=bool(crashed), gas_input=bool(input_gas_pedal), brake_input=bool(input_brake),
-                speed=speed[0]
-            )
-            race_progress = np.array([race_progress], dtype='float32')
-            reward += rew
+
+        race_progress = np.array([race_progress], dtype='float32')
 
         failure_counter = float(failure_counter)
-        img = np.array(img)
-
+        self.img_hist.append(img)
+        imgs = np.array(self.img_hist)
+        info = {"reward_sum": reward_sum}
         observation = [
             pos,
             speed, acceleration, jerk,
@@ -198,10 +203,10 @@ class TM2020InterfaceCustom(TM2020Interface):
             surface_id, steer_angle, wheel_rot, wheel_rot_speed, damper_len, slip_coef,
             reactor_ground_mode, ground_contact, reactor_air_control, ground_dist,
             crashed, failure_counter,
-            img
+            imgs
         ]
 
-        reward = np.float32(reward)
+        reward = np.float32(rew)
         # print(f"Reward: {reward}, crashed {bool(crashed)}, race progress {round(race_progress[0], 2)}")
         return observation, reward, terminated, info
 
@@ -247,7 +252,9 @@ class TM2020InterfaceCustom(TM2020Interface):
 
         failure_counter = 0.0
 
-        img = np.array(img)
+        for _ in range(self.img_hist_len):
+            self.img_hist.append(img)
+        imgs = np.array(list(self.img_hist))
 
         observation = [
             pos,
@@ -259,7 +266,7 @@ class TM2020InterfaceCustom(TM2020Interface):
             surface_id, steer_angle, wheel_rot, wheel_rot_speed, damper_len, slip_coef,
             reactor_ground_mode, ground_contact, reactor_air_control, ground_dist,
             crashed, failure_counter,
-            img
+            imgs
         ]
 
         self.reward_function.reset()

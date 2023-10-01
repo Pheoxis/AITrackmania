@@ -1,5 +1,6 @@
-from torchviz import make_dot
 import torch
 
-model = torch.load_state_dict()
-y = model(X)
+if torch.cuda.is_available():
+    print("GPU is available")
+else:
+    print("GPU is not available")

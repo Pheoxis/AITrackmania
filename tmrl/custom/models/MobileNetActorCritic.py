@@ -6,20 +6,9 @@ from torch.autograd import Variable
 from torch.distributions import Normal
 
 from actor import TorchActorModule
-
-#ok
-LOG_STD_MIN = -20
-LOG_STD_MAX = 2
-# Assuming you have already defined `rnn` and other utility functions
-def conv1x1(self, x):
-    x = torch.squeeze(x, dim=2)  # Squeeze the third dimension
-    x = torch.squeeze(x, dim=2)  # Squeeze the fourth dimension
-    return F.conv2d(x, self.conv1x1_weights)
-
 from custom.models.MobileNetV3 import mobilenetv3_large, mobilenetv3_small
 from custom.models.model_blocks import mlp
 from custom.models.model_constants import LOG_STD_MIN, LOG_STD_MAX
-
 
 
 # change this like

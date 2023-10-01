@@ -16,7 +16,7 @@ from config.config_constants import LIDAR_BLACK_THRESHOLD
 class TM2020OpenPlanetClient:
     # 25 floats instead of 11 to accommodate for yaw, pitch, and roll and camera position and other stuff.
     # Script attributes:
-    def __init__(self, host='127.0.0.1', port=9000, struct_str='<' + 'f' * 40):
+    def __init__(self, host='127.0.0.1', port=9000, struct_str='<' + 'f' * 22):
         self._struct_str = struct_str
         self.nb_floats = self._struct_str.count('f')
         self.nb_int32 = self._struct_str.count('i')

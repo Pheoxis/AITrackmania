@@ -5,7 +5,6 @@ from torch import nn
 from torch.distributions import Normal
 import torch
 
-
 from custom.models.model_blocks import mlp
 from custom.models.model_constants import LOG_STD_MIN, LOG_STD_MAX
 from util import prod
