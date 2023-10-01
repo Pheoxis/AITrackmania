@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 from gymnasium import spaces
 
@@ -8,7 +7,7 @@ from custom.utils.control_mouse import mouse_save_replay_tm20
 import config.config_constants as cfg
 
 
-class TM2020InterfaceTQC(TM2020Interface):
+class TM2020InterfaceTQCmini(TM2020Interface):
     def __init__(
             self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(160),
             record=False, save_replay: bool = False,
@@ -67,15 +66,6 @@ class TM2020InterfaceTQC(TM2020Interface):
 
         failure_counter = spaces.Box(low=0.0, high=15, shape=(1,))
 
-        if self.resize_to is not None:
-            w, h = self.resize_to
-        else:
-            w, h = cfg.WINDOW_HEIGHT, cfg.WINDOW_WIDTH
-        if self.grayscale:
-            imgs = spaces.Box(low=0.0, high=255.0, shape=(self.img_hist_len, h, w))  # cv2 grayscale images are (h, w)
-        else:
-            imgs = spaces.Box(low=0.0, high=255.0, shape=(self.img_hist_len, h, w, 3))  # cv2 images are (h, w, c)
-
         return spaces.Tuple(
             (
                 pos, distance,
@@ -85,28 +75,27 @@ class TM2020InterfaceTQC(TM2020Interface):
                 gear, rpm,
                 aim_yaw, aim_pitch,
                 steer_angle, slip_coef,
-                crashed, failure_counter,
-                imgs
+                crashed, failure_counter
             )
         )
 
-    def grab_data_and_img(self, percentage_to_cut: float = 0.2):
-        img = self.window_interface.screenshot()[:, :, :3]  # BGR ordering
-        height, _ = img.shape[:2]
-        cut_height = int(height * percentage_to_cut)
-        img = img[cut_height:, :]
-        if self.resize_to is not None:  # cv2.resize takes dim as (width, height)
-            img = cv2.resize(img, self.resize_to)
-        if self.grayscale:
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        else:
-            img = img[:, :, ::-1]  # reversed view for numpy RGB convention
-        data = self.grab_data()
-        # print(f"data: {data}")
-        self.img = img  # for render()
-        # cv2.imshow("Environment", img)
-        # cv2.waitKey(1)
-        return data, img
+    # def grab_data_and_img(self, percentage_to_cut: float = 0.2):
+    #     img = self.window_interface.screenshot()[:, :, :3]  # BGR ordering
+    #     height, _ = img.shape[:2]
+    #     cut_height = int(height * percentage_to_cut)
+    #     img = img[cut_height:, :]
+    #     if self.resize_to is not None:  # cv2.resize takes dim as (width, height)
+    #         img = cv2.resize(img, self.resize_to)
+    #     if self.grayscale:
+    #         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    #     else:
+    #         img = img[:, :, ::-1]  # reversed view for numpy RGB convention
+    #     data = self.grab_data()
+    #     # print(f"data: {data}")
+    #     self.img = img  # for render()
+    #     # cv2.imshow("Environment", img)
+    #     # cv2.waitKey(1)
+    #     return data, img
 
     def grab_data(self):
         data = self.client.retrieve_data()
@@ -117,10 +106,10 @@ class TM2020InterfaceTQC(TM2020Interface):
             returns the observation, the reward, and a terminated signal for end of episode
             obs must be a list of numpy arrays
         """
-        data, img = self.grab_data_and_img()
+        data = self.grab_data()
         # print(f"data: {data}")
-        curCP = int(data[0])
-        curLap = int(data[1])
+        cur_cp = int(data[0])
+        cur_lap = int(data[1])
 
         speed = np.array([data[2]], dtype='float32')
 
@@ -164,19 +153,17 @@ class TM2020InterfaceTQC(TM2020Interface):
             if self.save_replays:
                 mouse_save_replay_tm20(True)
 
-        if self.cur_lap < curLap:
+        if self.cur_lap < cur_lap:
             rew += self.lap_reward
-            self.cur_lap = curLap
+            self.cur_lap = cur_lap
 
-        if self.cur_checkpoint < curCP:
+        if self.cur_checkpoint < cur_cp:
             rew += self.checkpoint_reward
-            self.cur_checkpoint = curCP
+            self.cur_checkpoint = cur_cp
 
         race_progress = np.array([race_progress], dtype='float32')
 
         failure_counter = float(failure_counter)
-        self.img_hist.append(img)
-        imgs = np.array(self.img_hist)
         info = {"reward_sum": reward_sum}
         observation = [
             pos, distance,
@@ -186,8 +173,7 @@ class TM2020InterfaceTQC(TM2020Interface):
             gear, rpm,
             aim_yaw, aim_pitch,
             steer_angle, slip_coef,
-            crashed, failure_counter,
-            imgs
+            crashed, failure_counter
         ]
 
         reward = np.float32(rew)
@@ -199,7 +185,7 @@ class TM2020InterfaceTQC(TM2020Interface):
         obs must be a list of numpy arrays
         """
         self.reset_common()
-        data, img = self.grab_data_and_img()
+        data = self.grab_data()
 
         self.cur_lap = 0
         self.cur_checkpoint = 0
@@ -233,10 +219,6 @@ class TM2020InterfaceTQC(TM2020Interface):
         failure_counter = 0.0
         race_progress = 0.0
 
-        for _ in range(self.img_hist_len):
-            self.img_hist.append(img)
-        imgs = np.array(list(self.img_hist))
-
         observation = [
             pos, distance,
             speed, acceleration, jerk,
@@ -245,8 +227,7 @@ class TM2020InterfaceTQC(TM2020Interface):
             gear, rpm,
             aim_yaw, aim_pitch,
             steer_angle, slip_coef,
-            crashed, failure_counter,
-            imgs
+            crashed, failure_counter
         ]
 
         self.reward_function.reset()
