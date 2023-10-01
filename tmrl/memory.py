@@ -268,9 +268,24 @@ class R2D2Memory(Memory, ABC):
     def collate(self, batch, device):
         return collate_torch(batch, device)
 
+    #potential problem if memory is being trimmed
+    def find_zero_rewards_indices(self, reward_sums):
+        zero_rewards_indices = []
+        prev_reward_sum = None
+
+        for i, entry in enumerate(reward_sums):
+            reward_sum = entry['reward_sum']
+
+            if prev_reward_sum is not None and reward_sum == 0.0 and prev_reward_sum != 0.0:
+                zero_rewards_indices.append(i - 1)
+
+            prev_reward_sum = reward_sum
+
+        return zero_rewards_indices
+
     # potential problem if memory is being trimmed
     def sample_indices(self):
-        self.end_episodes_indices = [i for i, x in enumerate(self.data[23]) if x]
+        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[22])
         self.reward_sums = [self.data[22][index]['reward_sum'] for index in self.end_episodes_indices] # 22 -> infos
 
         if len(self.end_episodes_indices) == 0:
@@ -331,6 +346,8 @@ class R2D2Memory(Memory, ABC):
         indices = tuple(indices)
 
         return indices
+    # def sample_indices(self):
+    #     return tuple(randint(0, len(self) - 1) for _ in range(self.batch_size))
 
     def sample(self):
         indices = self.sample_indices()
