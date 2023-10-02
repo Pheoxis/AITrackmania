@@ -380,6 +380,8 @@ class R2D2Memory(Memory, ABC):
         indices = tuple(indices)
 
         return indices
+    # def sample_indices(self):
+    #     return tuple(randint(0, len(self) - 1) for _ in range(self.batch_size))
 
     def sample(self):
         indices = self.sample_indices()

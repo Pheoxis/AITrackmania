@@ -985,6 +985,7 @@ class MemoryR2D2(R2D2Memory):
 
         # self.end_episodes_indices = [i for i, x in enumerate(self.data[30]) if x]
 
+
         return self
 
 
@@ -1220,3 +1221,4 @@ class MemoryR2D2mini(R2D2Memory):
             self.data[23] = self.data[23][to_trim:]
 
         return self
+

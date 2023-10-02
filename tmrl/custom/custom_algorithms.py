@@ -573,13 +573,13 @@ class TQCAgent(TrainingAgent):
                 p_targ.data.mul_(self.polyak)
                 p_targ.data.add_((1 - self.polyak) * p.data)
 
-        ret_dict = {
-            "loss_actor": actor_loss.detach(),
-            "loss_critic": critic_loss.detach(),  # or any other relevant critic loss
-        }
+            ret_dict = {
+                "loss_actor": actor_loss.item(),
+                "loss_critic": critic_loss.item(),  # or any other relevant critic loss
+             }
 
-        if self.learn_entropy_coef:
-            ret_dict["loss_entropy_coef"] = alpha_loss.detach()
-            ret_dict["entropy_coef"] = alpha_t.item()
+            if self.learn_entropy_coef:
+                ret_dict["loss_entropy_coef"] = alpha_loss.item()
+                ret_dict["entropy_coef"] = alpha_t.item()
 
         return ret_dict
