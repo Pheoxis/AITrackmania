@@ -9,6 +9,7 @@ from torch.distributions import Normal
 from torchrl.modules import NoisyLinear
 
 import config.config_constants as cfg
+import config.config_objects as cfo
 from actor import TorchActorModule
 from custom.models.model_constants import LOG_STD_MIN, LOG_STD_MAX
 
@@ -54,6 +55,7 @@ class QRCNNQFunction(nn.Module):
         self.num_quantiles = num_quantiles
         dim_act = action_space.shape[0]
         mlp1_size, mlp2_size, mlp3_size = mlp_branch_sizes
+        mlp_out_size = cfo.ALG_CONFIG["QUANTILES_NUMBER"]
 
         self.layerNormApi = nn.LayerNorm(mlp2_size)
 
@@ -70,8 +72,10 @@ class QRCNNQFunction(nn.Module):
             rnn_size,
             mlp3_size,
             device=self.device,
-            std_init=0.1
+            std_init=0.05
         )
+
+        self.mlp_out = nn.Linear(mlp3_size, mlp_out_size)
 
         self.h0 = None
         self.c0 = None
@@ -106,13 +110,15 @@ class QRCNNQFunction(nn.Module):
 
         mlp1_lvl1_out = self.activation(self.mlp1_lvl1(obs_seq_cat.float()))
         mlp1_lvl2_out = self.activation(self.mlp1_lvl2(mlp1_lvl1_out))
-        layerNorm_api_out = self.layerNormApi(mlp1_lvl2_out)
+        layer_norm_api_out = self.layerNormApi(mlp1_lvl2_out)
 
-        cat_layerNorm_act_out = torch.cat([layerNorm_api_out, act], dim=-1)
+        cat_layer_norm_act_out = torch.cat([layer_norm_api_out, act], dim=-1)
 
-        rnn_block_api_out, (h0, c0) = self.rnn_blockApi(cat_layerNorm_act_out, (h0, c0))
+        rnn_block_api_out, (h0, c0) = self.rnn_blockApi(cat_layer_norm_act_out, (h0, c0))
 
         noisy_out = self.activation(self.noisy_out(rnn_block_api_out))
+
+        model_out = self.mlp_out(noisy_out)
 
         # q = self.activation(self.mlp_last(lstm_act_out))
 
@@ -120,7 +126,7 @@ class QRCNNQFunction(nn.Module):
             self.h0 = h0
             self.c0 = c0
 
-        return torch.squeeze(noisy_out, -1)
+        return torch.squeeze(model_out, -1)
 
 
 class SquashedActorQRCNN(TorchActorModule):
@@ -138,6 +144,7 @@ class SquashedActorQRCNN(TorchActorModule):
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
         dim_act = action_space.shape[0]
         mlp1_size, mlp2_size, mlp3_size = mlp_branch_sizes
+        mlp_out_size = cfo.ALG_CONFIG["QUANTILES_NUMBER"]
 
         self.layerNormApi = nn.LayerNorm(mlp2_size)
 
@@ -154,11 +161,13 @@ class SquashedActorQRCNN(TorchActorModule):
             rnn_size,
             mlp3_size,
             device=self.device,
-            std_init=0.1
+            std_init=0.05
         )
 
-        self.mu_layer = nn.Linear(mlp3_size, dim_act)
-        self.log_std_layer = nn.Linear(mlp3_size, dim_act)
+        self.mlp_out = nn.Linear(mlp3_size, mlp_out_size)
+
+        self.mu_layer = nn.Linear(mlp_out_size, dim_act)
+        self.log_std_layer = nn.Linear(mlp_out_size, dim_act)
         self.act_limit = action_space.high[0]
         self.log_std_min = LOG_STD_MIN
         self.log_std_max = LOG_STD_MAX
@@ -205,8 +214,10 @@ class SquashedActorQRCNN(TorchActorModule):
 
         noisy_out = self.activation(self.noisy_out(rnn_block_api_out))
 
-        mu = self.mu_layer(noisy_out)
-        log_std = self.log_std_layer(noisy_out)
+        model_out = self.mlp_out(noisy_out)
+
+        mu = self.mu_layer(model_out)
+        log_std = self.log_std_layer(model_out)
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         std = torch.exp(log_std)
 

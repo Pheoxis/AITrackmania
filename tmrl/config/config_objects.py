@@ -65,7 +65,7 @@ else:
         TRAIN_MODEL = tqc.QRCNNActorCritic
         POLICY = tqc.SquashedActorQRCNN
     elif cfg.PRAGMA_MBEST_TQC:
-        assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
+        # assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
         TRAIN_MODEL = mini.QRCNNActorCritic
         POLICY = mini.SquashedActorQRCNN
         # TRAIN_MODEL = mtqc.QRCNNActorCritic
