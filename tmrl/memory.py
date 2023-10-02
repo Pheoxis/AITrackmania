@@ -238,7 +238,9 @@ class R2D2Memory(Memory, ABC):
                  memory_size=1000000,
                  batch_size=256,
                  dataset_path="",
-                 crc_debug=False):
+                 crc_debug=False,
+                 # info_index=21
+                 ):
         """
         Args:
             device (str): output tensors will be collated to this device
@@ -255,7 +257,9 @@ class R2D2Memory(Memory, ABC):
                          nb_steps=nb_steps,
                          sample_preprocessor=sample_preprocessor,
                          crc_debug=crc_debug,
-                         device=device)
+                         device=device,
+                         # info_index=info_index
+                         )
         self.previous_episode = None
         self.last_index = 0
         self.end_episodes_indices = []
@@ -268,7 +272,6 @@ class R2D2Memory(Memory, ABC):
     def collate(self, batch, device):
         return collate_torch(batch, device)
 
-    #potential problem if memory is being trimmed
     def find_zero_rewards_indices(self, reward_sums):
         zero_rewards_indices = []
         prev_reward_sum = None
@@ -283,10 +286,25 @@ class R2D2Memory(Memory, ABC):
 
         return zero_rewards_indices
 
+    def normalize_list(self, input_list):
+        # Find the minimum and maximum values in the list
+        min_val = min(input_list)
+        max_val = max(input_list)
+
+        # Check if the range is zero to avoid division by zero
+        if min_val == max_val:
+            return [0.0] * len(input_list)
+
+        # Normalize each element in the list
+        normalized_list = [(x - min_val) / (max_val - min_val) for x in input_list]
+
+        return normalized_list
+
     # potential problem if memory is being trimmed
     def sample_indices(self):
-        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[22])
-        self.reward_sums = [self.data[22][index]['reward_sum'] for index in self.end_episodes_indices] # 22 -> infos
+        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[21])
+        # self.end_episodes_indices = [i for i, x in enumerate(self.data[23]) if x]
+        self.reward_sums = [self.data[21][index]['reward_sum'] for index in self.end_episodes_indices] # 22 -> infos
 
         if len(self.end_episodes_indices) == 0:
             if self.last_index + self.batch_size > len(self):
@@ -299,7 +317,23 @@ class R2D2Memory(Memory, ABC):
         else:
             if self.isNewEpisode:
                 # Select a random episode based on reward sums
-                self.chosen_episode = random.choices(self.end_episodes_indices, weights=self.reward_sums, k=1)[0]
+                # weights = self.normalize_list(self.reward_sums)
+                # napisać ifa gdy len(self.reward_sums) == 1
+                if len(self.reward_sums) == 1:
+                    self.chosen_episode = self.end_episodes_indices[0]
+                else:
+                    # min_sum = min(self.reward_sums)
+                    # max_sum = max(self.reward_sums)
+                    # epsilon = 0.000001
+                    # weights = [
+                    #     (reward_sum-min_sum)/(max_sum - min_sum + epsilon) + 0.5 for reward_sum in self.reward_sums
+                    # ]
+                    # print(f"reward sums: {self.reward_sums}")
+                    # print(f"weights: {weights}")
+                    self.chosen_episode = random.choices(
+                        self.end_episodes_indices, weights=self.reward_sums,
+                        k=1
+                    )[0]
                 self.chosen_burn_in = random.randint(self.burn_ins[0], self.burn_ins[1])
                 self.isNewEpisode = False
 

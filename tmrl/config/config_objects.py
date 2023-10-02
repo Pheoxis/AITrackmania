@@ -7,16 +7,19 @@ import rtgym
 import config.config_constants as cfg
 import custom.models.BestActorCriticTQC as tqc
 import custom.models.MaybeBetterTQC as mtqc
+import custom.models.BetterTQCmini as mini
 from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
 from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
 from custom.custom_algorithms import TQCAgent as TQC_Agent
 from custom.custom_checkpoints import update_run_instance
 from custom.custom_memories import MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, \
     get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs, MemoryTMBest, \
-    get_local_buffer_sample_mobilenet, MemoryTMFull, MemoryR2D2
+    get_local_buffer_sample_mobilenet, MemoryTMFull, MemoryR2D2, MemoryR2D2mini
 from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
     obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
-from custom.interfaces.TM2020InterfaceTQC import TM2020InterfaceTQC
+
+from custom.interfaces.TM2020InterfaceTQCmini import TM2020InterfaceTQCmini
+# from custom.interfaces.TM2020InterfaceTQC import TM2020InterfaceTQC
 from custom.interfaces.TM2020Interface import TM2020Interface
 from custom.interfaces.TM2020InterfaceCustom import TM2020InterfaceCustom
 from custom.interfaces.TM2020InterfaceLidar import TM2020InterfaceLidar
@@ -62,9 +65,11 @@ else:
         TRAIN_MODEL = tqc.QRCNNActorCritic
         POLICY = tqc.SquashedActorQRCNN
     elif cfg.PRAGMA_MBEST_TQC:
-        assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = mtqc.QRCNNActorCritic
-        POLICY = mtqc.SquashedActorQRCNN
+        # assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
+        TRAIN_MODEL = mini.QRCNNActorCritic
+        POLICY = mini.SquashedActorQRCNN
+        # TRAIN_MODEL = mtqc.QRCNNActorCritic
+        # POLICY = mtqc.SquashedActorQRCNN
     else:
         assert not cfg.PRAGMA_RNN, "RNNs not supported yet"
         assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
@@ -81,12 +86,19 @@ if cfg.PRAGMA_LIDAR:
 else:
     if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC or cfg.PRAGMA_MBEST_TQC:
         INT = partial(
-            TM2020InterfaceTQC, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
+            TM2020InterfaceTQCmini, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
             grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
             crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
             checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
             min_nb_steps_before_failure=200 if cfg.MAP_NAME == "tmrl_test" else 120
         )
+        # INT = partial(
+        #     TM2020InterfaceTQC, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
+        #     grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
+        #     crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
+        #     checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
+        #     min_nb_steps_before_failure=200 if cfg.MAP_NAME == "tmrl_test" else 120
+        # )
         # INT = partial(
         #     TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
         #     grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
@@ -146,7 +158,8 @@ else:
     if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
         MEM = MemoryTMBest
     elif cfg.PRAGMA_MBEST_TQC:
-        MEM = MemoryR2D2
+        # MEM = MemoryR2D2
+        MEM = MemoryR2D2mini
     else:
         MEM = MemoryTMFull
 

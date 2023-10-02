@@ -129,7 +129,16 @@ class TrainingOffline:
 
                 if self.total_updates == 0:
                     logging.info(f"starting training")
-                if batch_index % 16 == 0:
+
+                num_elements = 5
+
+                # Calculate the step size between elements
+                step_size = int(self.steps / (num_elements - 1))
+
+                # Create a list of five equally spaced elements
+                batch_index_checkpoints = [i * step_size for i in range(num_elements)]
+
+                if batch_index in batch_index_checkpoints:
                     logging.info(f"batch {batch_index} out of {self.steps} has finished")
                 stats_training_dict = self.agent.train(batch)
 
