@@ -67,6 +67,8 @@ GRAYSCALE = ENV_CONFIG["IMG_GRAYSCALE"] if "IMG_GRAYSCALE" in ENV_CONFIG else Fa
 IMG_WIDTH = ENV_CONFIG["IMG_WIDTH"] if "IMG_WIDTH" in ENV_CONFIG else 64
 IMG_HEIGHT = ENV_CONFIG["IMG_HEIGHT"] if "IMG_HEIGHT" in ENV_CONFIG else 64
 
+POINTS_NUMBER = TMRL_CONFIG["ALG"]["POINTS_NUMBER"]
+
 # DEBUGGING AND BENCHMARKING: ===================================
 # Only for checking the consistency of the custom networking methods, set it to False otherwise.
 # Caution: difficult to handle if reset transitions are collected.

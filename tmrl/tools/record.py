@@ -28,7 +28,7 @@ def record_reward_dist(path_reward=PATH_REWARD):
             is_recording = True
         if is_recording:
             data = client.retrieve_data(sleep_if_empty=0.01)  # we need many points to build a smooth curve
-            terminated = bool(data[8])
+            terminated = bool(data[9])
             if keyboard.is_pressed('q') or terminated:
                 logging.info(f"Computing reward function checkpoints from captured positions...")
                 logging.info(f"Initial number of captured positions: {len(positions)}")
@@ -62,7 +62,7 @@ def record_reward_dist(path_reward=PATH_REWARD):
                 logging.info(f"All done")
                 return
             else:
-                positions.append([data[2], data[3], data[4]])
+                positions.append([data[3], data[4], data[5]])
         else:
             time.sleep(0.05)  # waiting for user to press E
 
