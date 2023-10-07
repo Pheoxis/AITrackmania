@@ -73,6 +73,7 @@ class Memory(ABC):
         self.stat_test_steps = 0
         self.stat_train_steps = 0
         self.average_reward = 0
+        self.debug = False
 
         # init memory
         self.path = Path(dataset_path)
@@ -264,10 +265,11 @@ class R2D2Memory(Memory, ABC):
         self.last_index = 0
         self.end_episodes_indices = []
         self.chosen_episode = None
-        self.burn_ins = (2, 40)
+        # self.burn_ins = (2, 40)
         self.isNewEpisode = True
         self.chosen_burn_in = None
         self.reward_sums = []
+
 
     def collate(self, batch, device):
         return collate_torch(batch, device)
@@ -278,7 +280,6 @@ class R2D2Memory(Memory, ABC):
 
         for i, entry in enumerate(reward_sums):
             reward_sum = entry['reward_sum']
-
             if prev_reward_sum is not None and reward_sum == 0.0 and prev_reward_sum != 0.0:
                 zero_rewards_indices.append(i - 1)
 
@@ -302,9 +303,8 @@ class R2D2Memory(Memory, ABC):
 
     # potential problem if memory is being trimmed
     def sample_indices(self):
-        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[21])
-        # self.end_episodes_indices = [i for i, x in enumerate(self.data[23]) if x]
-        self.reward_sums = [self.data[21][index]['reward_sum'] for index in self.end_episodes_indices] # 22 -> infos
+        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[19])
+        self.reward_sums = [self.data[19][index]['reward_sum'] for index in self.end_episodes_indices] # 19 -> infos
 
         if len(self.end_episodes_indices) == 0:
             if self.last_index + self.batch_size > len(self):
@@ -321,28 +321,33 @@ class R2D2Memory(Memory, ABC):
                 # napisać ifa gdy len(self.reward_sums) == 1
                 if len(self.reward_sums) == 1:
                     self.chosen_episode = self.end_episodes_indices[0]
+                    self.previous_episode = 0
+                    if self.debug:
+                        print(f"previous_episode: {self.previous_episode}")
+                        print(f"chosen_episode: {self.chosen_episode}")
                 else:
-                    # min_sum = min(self.reward_sums)
-                    # max_sum = max(self.reward_sums)
-                    # epsilon = 0.000001
-                    # weights = [
-                    #     (reward_sum-min_sum)/(max_sum - min_sum + epsilon) + 0.5 for reward_sum in self.reward_sums
-                    # ]
-                    # print(f"reward sums: {self.reward_sums}")
-                    # print(f"weights: {weights}")
+
                     self.chosen_episode = random.choices(
-                        self.end_episodes_indices, weights=self.reward_sums,
+                        self.end_episodes_indices, weights=self.normalize_list(self.reward_sums),
                         k=1
                     )[0]
-                self.chosen_burn_in = random.randint(self.burn_ins[0], self.burn_ins[1])
-                self.isNewEpisode = False
+                    previous_episode_index = sorted(self.end_episodes_indices).index(self.chosen_episode) - 1
+                    if previous_episode_index < 0:
+                        self.previous_episode = 0
+                    else:
+                        self.previous_episode = self.end_episodes_indices[previous_episode_index]
+                    if self.debug:
+                        print(f"previous_episode: {self.previous_episode}")
+                        print(f"chosen_episode: {self.chosen_episode}")
 
-                # Find the previous episode index (else 0)
-                if self.end_episodes_indices.index(self.chosen_episode) > 0:
-                    previous_episode_index = self.end_episodes_indices.index(self.chosen_episode) - 1
-                    self.previous_episode = self.end_episodes_indices[previous_episode_index]
-                else:
-                    self.previous_episode = 0
+                episode_length = self.chosen_episode - self.previous_episode
+                self.chosen_burn_in = random.randint(int(episode_length * 0.04), int(episode_length * 0.5))
+
+                if self.debug:
+                    print(f"episode_length: {episode_length}")
+                    print(f"chosen_burn_in: {self.chosen_burn_in}")
+
+                self.isNewEpisode = False
 
                 if self.chosen_episode - self.previous_episode > self.batch_size + self.chosen_burn_in:
                     cur_idx = self.previous_episode + self.chosen_burn_in

@@ -44,7 +44,7 @@ def lstm(input_size, rnn_size, rnn_len, dropout: float = 0.0):
 class QRCNNQFunction(nn.Module):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=128, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
+            self, observation_space, action_space, rnn_size=180, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
             activation=nn.GELU, num_quantiles=25
     ):
         super().__init__()
@@ -132,7 +132,7 @@ class QRCNNQFunction(nn.Module):
 class SquashedActorQRCNN(TorchActorModule):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=128, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
+            self, observation_space, action_space, rnn_size=180, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
             activation=nn.GELU
     ):
         super().__init__(
@@ -262,7 +262,7 @@ class SquashedActorQRCNN(TorchActorModule):
 class QRCNNActorCritic(nn.Module):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=128, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
+            self, observation_space, action_space, rnn_size=180, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
             activation=nn.GELU, num_quantiles=25
     ):
         super().__init__()

@@ -39,10 +39,6 @@ class TM2020InterfaceTQCmini(TM2020Interface):
         """
         speed = spaces.Box(low=0.0, high=1000.0, shape=(1,))
 
-        distance = spaces.Box(low=-100.0, high=50_000.0, shape=(1,))
-
-        pos = spaces.Box(low=-10000.0, high=10000.0, shape=(3,))
-
         input_steer = spaces.Box(low=-1000.0, high=1000.0, shape=(1,))
         input_gas_pedal = spaces.Box(low=-1000.0, high=1000.0, shape=(1,))
         input_brake = spaces.Box(low=0.0, high=1.0, shape=(1,))
@@ -50,7 +46,6 @@ class TM2020InterfaceTQCmini(TM2020Interface):
         acceleration = spaces.Box(low=-100.0, high=100.0, shape=(1,))
         jerk = spaces.Box(low=-10.0, high=10.0, shape=(1,))
 
-        rpm = spaces.Box(low=0.0, high=20_000.0, shape=(1,))
         aim_yaw = spaces.Box(low=-4.0, high=4.0, shape=(1,))
         aim_pitch = spaces.Box(low=-1.0, high=1.0, shape=(1,))
 
@@ -66,13 +61,15 @@ class TM2020InterfaceTQCmini(TM2020Interface):
 
         failure_counter = spaces.Box(low=0.0, high=15, shape=(1,))
 
+        next_checkpoints = spaces.Box(low=-100.0, high=100.0, shape=(2*cfg.POINTS_NUMBER,))
+
         return spaces.Tuple(
             (
-                pos, distance,
+                next_checkpoints,
                 speed, acceleration, jerk,
                 race_progress,
                 input_steer, input_gas_pedal, input_brake,
-                gear, rpm,
+                gear,
                 aim_yaw, aim_pitch,
                 steer_angle, slip_coef,
                 crashed, failure_counter
@@ -113,37 +110,37 @@ class TM2020InterfaceTQCmini(TM2020Interface):
 
         speed = np.array([data[2]], dtype='float32')
 
-        distance = np.array([data[2]], dtype='float32')
+        pos = np.array([data[3], data[4], data[5]], dtype='float32')
 
-        pos = np.array([data[4], data[5], data[6]], dtype='float32')
+        input_steer = np.array([data[6]], dtype='float32')
+        input_gas_pedal = np.array([data[7]], dtype='float32')
+        input_brake = np.array([data[8]], dtype='float32')
 
-        input_steer = np.array([data[7]], dtype='float32')
-        input_gas_pedal = np.array([data[8]], dtype='float32')
-        input_brake = np.array([data[9]], dtype='float32')
+        acceleration = np.array([data[10]], dtype='float32')
+        jerk = np.array([data[11]], dtype='float32')
 
-        acceleration = np.array([data[11]], dtype='float32')
-        jerk = np.array([data[12]], dtype='float32')
+        aim_yaw = np.array([data[12]], dtype='float32')
+        aim_pitch = np.array([data[13]], dtype='float32')
 
-        rpm = np.array([data[13]], dtype='float32')
+        steer_angle = np.array(data[14:16], dtype='float32')
 
-        aim_yaw = np.array([data[14]], dtype='float32')
-        aim_pitch = np.array([data[15]], dtype='float32')
+        slip_coef = np.array(data[16:18], dtype='float32')
 
-        steer_angle = np.array([data[16:18]], dtype='float32')
+        crashed = np.array([data[18]], dtype='float32')
 
-        slip_coef = np.array([data[18:20]], dtype='float32')
+        gear = np.array([data[19]], dtype='float32')
 
-        crashed = np.array([data[20]], dtype='float32')
-
-        gear = np.array([data[21]], dtype='float32')
-
-        rew, terminated, failure_counter, race_progress, reward_sum = self.reward_function.compute_reward(
+        rew, terminated, failure_counter, reward_sum = self.reward_function.compute_reward(
             pos=pos,  # position x,y,z
-            crashed=bool(crashed),  # distance=bool(input_gas_pedal), brake_input=bool(input_brake),
+            crashed=bool(crashed),
             speed=speed[0]
         )
 
-        end_of_track = bool(data[10])
+        race_progress = self.reward_function.compute_race_progress()
+
+        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, cfg.POINTS_NUMBER)
+
+        end_of_track = bool(data[9])
 
         if end_of_track:
             terminated = True  # sprawdzić czy to wgl jest wywoływane
@@ -163,22 +160,26 @@ class TM2020InterfaceTQCmini(TM2020Interface):
 
         race_progress = np.array([race_progress], dtype='float32')
 
-        failure_counter = float(failure_counter)
+        failure_counter = np.array([float(failure_counter)])
         info = {"reward_sum": reward_sum}
+
         observation = [
-            pos, distance,
             speed, acceleration, jerk,
             race_progress,
             input_steer, input_gas_pedal, input_brake,
-            gear, rpm,
+            gear,
             aim_yaw, aim_pitch,
             steer_angle, slip_coef,
             crashed, failure_counter
         ]
 
+        total_obs = [next_checkpoints] + observation
+
+        total_obs[0] = np.array(total_obs[0])
+
         reward = np.float32(rew)
         # print(f"Reward: {reward}, crashed {bool(crashed)}, race progress {round(race_progress[0], 2)}")
-        return observation, reward, terminated, info
+        return total_obs, reward, terminated, info
 
     def reset(self, seed=None, options=None):
         """
@@ -192,44 +193,45 @@ class TM2020InterfaceTQCmini(TM2020Interface):
 
         speed = np.array([data[2]], dtype='float32')
 
-        distance = np.array([data[2]], dtype='float32')
+        pos = np.array([data[3], data[4], data[5]], dtype='float32')
 
-        pos = np.array([data[4], data[5], data[6]], dtype='float32')
+        input_steer = np.array([data[6]], dtype='float32')
+        input_gas_pedal = np.array([data[7]], dtype='float32')
+        input_brake = np.array([data[8]], dtype='float32')
+        # isFinished 10
+        acceleration = np.array([data[10]], dtype='float32')
+        jerk = np.array([data[11]], dtype='float32')
 
-        input_steer = np.array([data[7]], dtype='float32')
-        input_gas_pedal = np.array([data[8]], dtype='float32')
-        input_brake = np.array([data[9]], dtype='float32')
+        aim_yaw = np.array([data[12]], dtype='float32')
+        aim_pitch = np.array([data[13]], dtype='float32')
 
-        acceleration = np.array([data[11]], dtype='float32')
-        jerk = np.array([data[12]], dtype='float32')
+        steer_angle = np.array(data[14:16], dtype='float32')
 
-        rpm = np.array([data[13]], dtype='float32')
+        slip_coef = np.array(data[16:18], dtype='float32')
 
-        aim_yaw = np.array([data[14]], dtype='float32')
-        aim_pitch = np.array([data[15]], dtype='float32')
+        crashed = np.array([data[18]], dtype='float32')
 
-        steer_angle = np.array([data[16:18]], dtype='float32')
+        gear = np.array([data[19]], dtype='float32')
 
-        slip_coef = np.array([data[18:20]], dtype='float32')
-
-        crashed = np.array([data[20]], dtype='float32')
-
-        gear = np.array([data[21]], dtype='float32')
-
-        failure_counter = 0.0
+        failure_counter = np.array([0.0])
         race_progress = 0.0
 
+        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, cfg.POINTS_NUMBER)
+
         observation = [
-            pos, distance,
             speed, acceleration, jerk,
             race_progress,
             input_steer, input_gas_pedal, input_brake,
-            gear, rpm,
+            gear,
             aim_yaw, aim_pitch,
             steer_angle, slip_coef,
             crashed, failure_counter
         ]
 
+        total_obs = [next_checkpoints] + observation
+
+        total_obs[0] = np.array(total_obs[0])
+
         self.reward_function.reset()
         info = {"reward_sum": 0.0}
-        return observation, info
+        return total_obs, info

@@ -74,6 +74,8 @@ class RewardFunction:
         self.high_threshold = high_threshold
         self.cur_distance = 0
         self.prev_distance = 0
+        self.cooldown = 5
+        self.change_cooldown = 5
 
         wandb_dir = tempfile.mkdtemp()  # prevent wandb from polluting the home directory
         atexit.register(shutil.rmtree, wandb_dir, ignore_errors=True)  # clean up after wandb atexit handler finishes
@@ -94,7 +96,19 @@ class RewardFunction:
         # self.tmp_counter = 0
         # self.traj = []
 
-    def compute_reward(self, pos, crashed: bool = False, distance: float = None, speed: float = None):
+    def get_n_next_checkpoints_xy(self, pos, number_of_next_points: int = 3):
+        next_indices = [self.cur_idx + i for i in range(1, number_of_next_points + 1)]
+        for i in range(len(next_indices)):
+            if next_indices[i] >= len(self.data):
+                next_indices[i] = len(self.data) - 1
+        route_to_next_poses = []
+        for pos_index in next_indices:
+            for i in range(len(pos) - 1):
+                route_to_next_poses.append(self.data[pos_index][i] - pos[i])
+
+        return route_to_next_poses
+
+    def compute_reward(self, pos, crashed: bool = False, speed: float = None):
         # self.tmp_counter += 1
         # if self.tmp_counter % 10 == 0:
         #     print(f"pos: {pos}, first pos from reward: {self.data[0]}")
@@ -139,12 +153,6 @@ class RewardFunction:
             self.failure_counter = 0
         self.cur_idx = best_index
 
-        # if reward > 0.0:
-        # reward += speed * (1 + self.sigmoid(self.cur_idx - self.prev_idx)) / 200.0
-        # reward += speed / 250.0
-        # self.prev_idx = self.cur_idx
-        # self.prev_distance = distance
-
         if not self.isFinished:
             if self.cur_idx > len(self.data) - 5:
                 reward += cfg.REWARD_END_OF_TRACK
@@ -152,11 +160,6 @@ class RewardFunction:
 
         if speed < 0:
             reward -= 1.0
-
-        # if self.cur_idx > self.prev_idx:
-        #     reward += speed * (distance - self.prev_distance) / (self.cur_idx - self.prev_idx)
-        #     self.prev_idx = self.cur_idx
-        #     self.prev_distance = distance
 
         if crashed:
             reward -= abs(self.crash_penalty) * self.crash_counter
@@ -172,25 +175,42 @@ class RewardFunction:
             if self.reward_sum != 0.0:
                 self.reward_sum_list.append(self.reward_sum)
                 wandb.log({"Run reward": self.reward_sum})
+                self.change_min_nb_steps_before_failure()
             # logging.info(f"Total reward of the run: {self.reward_sum}")
             # if self.counter % 2 == 0:
             #     self.min_nb_steps_before_failure += 2
 
-        return reward, terminated, self.failure_counter, self.cur_idx, self.reward_sum
+        return reward, terminated, self.failure_counter, self.reward_sum
 
-    @staticmethod
-    def sigmoid(x):
-        return 1 / (1 + np.exp(-0.2 * x + 5))
+    def compute_race_progress(self):
+        return self.cur_idx/len(self.data)
 
-    def is_monotonically_decreasing(self, number_last_el, threshold: float):
-        pass
-        # for i in range(len(self.reward_sum_list) - 1):
-        #     if lst[i] < lst[i + 1]:
-        #         return False
-        # return True
+    def check_linear_coefficent(self, window_size: int = 5):
+        # Define the number of points
+        num_points = len(self.reward_sum_list[window_size:])
 
-    def is_monotonically_increasing(self, number_last_el, threshold: float):
-        pass
+        # Generate list1 as a linspace with the same number of points as list2
+        x_axis = np.linspace(start=min(self.reward_sum_list[window_size:]), stop=max(self.reward_sum_list[window_size:]), num=num_points)
+
+        # Calculate the correlation coefficient
+        correlation_matrix = np.corrcoef(x_axis, self.reward_sum_list[window_size:])
+
+        # The correlation coefficient is at position (0, 1) or (1, 0) in the correlation matrix
+        correlation_coefficient = correlation_matrix[0, 1]
+        return correlation_coefficient
+
+    def change_min_nb_steps_before_failure(self):
+        if self.change_cooldown <= 0:
+            corr = self.check_linear_coefficent()
+            if corr <= 0.05:
+                if self.min_nb_steps_before_failure <= 300:
+                    self.min_nb_steps_before_failure += 5
+            elif corr >= 0.15:
+                if self.min_nb_steps_before_failure >= 40:
+                    self.min_nb_steps_before_failure -= 5
+            self.change_cooldown = self.cooldown
+        else:
+            self.change_cooldown -= 1
 
     def reset(self):
         """
