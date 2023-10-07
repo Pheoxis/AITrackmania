@@ -203,9 +203,11 @@ class RewardFunction:
         if self.change_cooldown <= 0:
             corr = self.check_linear_coefficent()
             if corr <= 0.05:
-                self.min_nb_steps_before_failure += 5
+                if self.min_nb_steps_before_failure <= 300:
+                    self.min_nb_steps_before_failure += 5
             elif corr >= 0.15:
-                self.min_nb_steps_before_failure -= 5
+                if self.min_nb_steps_before_failure >= 40:
+                    self.min_nb_steps_before_failure -= 5
             self.change_cooldown = self.cooldown
         else:
             self.change_cooldown -= 1
