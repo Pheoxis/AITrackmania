@@ -238,7 +238,9 @@ class R2D2Memory(Memory, ABC):
                  memory_size=1000000,
                  batch_size=256,
                  dataset_path="",
-                 crc_debug=False):
+                 crc_debug=False,
+                 # info_index=21
+                 ):
         """
         Args:
             device (str): output tensors will be collated to this device
@@ -255,7 +257,9 @@ class R2D2Memory(Memory, ABC):
                          nb_steps=nb_steps,
                          sample_preprocessor=sample_preprocessor,
                          crc_debug=crc_debug,
-                         device=device)
+                         device=device,
+                         # info_index=info_index
+                         )
         self.previous_episode = None
         self.last_index = 0
         self.end_episodes_indices = []
@@ -298,9 +302,9 @@ class R2D2Memory(Memory, ABC):
 
     # potential problem if memory is being trimmed
     def sample_indices(self):
-        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[22])
+        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[21])
         # self.end_episodes_indices = [i for i, x in enumerate(self.data[23]) if x]
-        self.reward_sums = [self.data[22][index]['reward_sum'] for index in self.end_episodes_indices] # 22 -> infos
+        self.reward_sums = [self.data[21][index]['reward_sum'] for index in self.end_episodes_indices] # 22 -> infos
 
         if len(self.end_episodes_indices) == 0:
             if self.last_index + self.batch_size > len(self):
@@ -326,6 +330,11 @@ class R2D2Memory(Memory, ABC):
                     # ]
                     # print(f"reward sums: {self.reward_sums}")
                     # print(f"weights: {weights}")
+                    min_val = min(self.reward_sums)
+                    if min_val <= 0.0:
+                        for i in range(len(self.reward_sums)):
+                            self.reward_sums[i] -= min_val
+
                     self.chosen_episode = random.choices(
                         self.end_episodes_indices, weights=self.reward_sums,
                         k=1

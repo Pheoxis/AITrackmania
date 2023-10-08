@@ -140,9 +140,9 @@ class TM2020InterfaceTQC(TM2020Interface):
         aim_yaw = np.array([data[14]], dtype='float32')
         aim_pitch = np.array([data[15]], dtype='float32')
 
-        steer_angle = np.array(data[16:18], dtype='float32')
+        steer_angle = np.array([data[16:18]], dtype='float32')
 
-        slip_coef = np.array(data[18:20], dtype='float32')
+        slip_coef = np.array([data[18:20]], dtype='float32')
 
         crashed = np.array([data[20]], dtype='float32')
 
@@ -222,9 +222,9 @@ class TM2020InterfaceTQC(TM2020Interface):
         aim_yaw = np.array([data[14]], dtype='float32')
         aim_pitch = np.array([data[15]], dtype='float32')
 
-        steer_angle = np.array(data[16:18], dtype='float32')
+        steer_angle = np.array([data[16:18]], dtype='float32')
 
-        slip_coef = np.array(data[18:20], dtype='float32')
+        slip_coef = np.array([data[18:20]], dtype='float32')
 
         crashed = np.array([data[20]], dtype='float32')
 
