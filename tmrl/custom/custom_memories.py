@@ -997,7 +997,7 @@ class MemoryR2D2mini(R2D2Memory):
                  dataset_path="",
                  imgs_obs=4,
                  act_buf_len=1,
-                 nb_steps=2,
+                 nb_steps=1,
                  sample_preprocessor: callable = None,
                  crc_debug=False,
                  device="cpu"):
@@ -1045,7 +1045,7 @@ class MemoryR2D2mini(R2D2Memory):
         # imgs_new_obs = imgs[1:]
 
         # if a reset transition has influenced the observation, special care must be taken
-        last_eoes = self.data[19][idx_now - self.min_samples:idx_now]  # self.min_samples values
+        last_eoes = self.data[17][idx_now - self.min_samples:idx_now]  # self.min_samples values
         last_eoe_idx = last_true_in_list(last_eoes)  # last occurrence of True
 
         assert last_eoe_idx is None or last_eoes[last_eoe_idx], f"last_eoe_idx:{last_eoe_idx}"
@@ -1072,12 +1072,11 @@ class MemoryR2D2mini(R2D2Memory):
             self.data[14][idx_last],  # 12
             self.data[15][idx_last],  # 13
             self.data[16][idx_last],  # 14
-            self.data[17][idx_last],  # 15
-            self.data[18][idx_last],  # 16
             # imgs_last_obs,
             *last_act_buf)
         new_act = self.data[1][idx_now]
-        rew = np.float32(self.data[20][idx_now])
+
+        rew = np.float32(self.data[18][idx_now])
         new_obs = (
             self.data[2][idx_now],  # 0
             self.data[3][idx_now],  # 1
@@ -1094,13 +1093,11 @@ class MemoryR2D2mini(R2D2Memory):
             self.data[14][idx_now],  # 12
             self.data[15][idx_now],  # 13
             self.data[16][idx_now],  # 14
-            self.data[17][idx_now],  # 15
-            self.data[18][idx_now],  # 16
             # imgs_new_obs,
             *new_act_buf)
-        terminated = self.data[22][idx_now]
-        truncated = self.data[23][idx_now]
-        info = self.data[21][idx_now]
+        terminated = self.data[20][idx_now]
+        truncated = self.data[21][idx_now]
+        info = self.data[19][idx_now]
         return last_obs, new_act, rew, new_obs, terminated, truncated, info
 
     def load_acts(self, item):
@@ -1117,28 +1114,26 @@ class MemoryR2D2mini(R2D2Memory):
 
         d0 = [first_data_idx + i for i, _ in enumerate(buffer.memory)]  # indexes
         d1 = [b[0] for b in buffer.memory]  # actions
-        d2 = [np.array(b[1][0]) for b in buffer.memory]  # pos
-        d3 = [np.array(b[1][1]) for b in buffer.memory]  # distances
-        d4 = [np.array(b[1][2]) for b in buffer.memory]  # speeds
-        d5 = [np.array(b[1][3]) for b in buffer.memory]  # accelerations
-        d6 = [np.array(b[1][4]) for b in buffer.memory]  # jerks
-        d7 = [np.array(b[1][5]) for b in buffer.memory]  # race_progress
-        d8 = [np.array(b[1][6]) for b in buffer.memory]  # input_steer
-        d9 = [np.array(b[1][7]) for b in buffer.memory]  # input_gas_pedal
-        d10 = [np.array(b[1][8]) for b in buffer.memory]  # input_brake
-        d11 = [np.array(b[1][9]) for b in buffer.memory]  # gear
-        d12 = [np.array(b[1][10]) for b in buffer.memory]  # rpm
-        d13 = [np.array(b[1][11]) for b in buffer.memory]  # aim_yaw
-        d14 = [np.array(b[1][12]) for b in buffer.memory]  # aim_pitch
-        d15 = [np.array(b[1][13]) for b in buffer.memory]  # steer_angle
-        d16 = [np.array(b[1][14]) for b in buffer.memory]  # slip_coef
-        d17 = [np.array(b[1][15].tolist()) for b in buffer.memory]  # crashed
-        d18 = [np.array(b[1][16]) for b in buffer.memory]  # failure counter
-        d19 = [b[3] or b[4] for b in buffer.memory]  # eoes (end of episode)
-        d20 = [b[2] for b in buffer.memory]  # rewards
-        d21 = [b[5] for b in buffer.memory]  # infos
-        d22 = [b[3] for b in buffer.memory]  # terminated
-        d23 = [b[4] for b in buffer.memory]  # truncated
+        d2 = [np.array(b[1][0]) for b in buffer.memory]  # next checkpoints
+        d3 = [np.array(b[1][1]) for b in buffer.memory]  # speeds
+        d4 = [np.array(b[1][2]) for b in buffer.memory]  # accelerations
+        d5 = [np.array(b[1][3]) for b in buffer.memory]  # jerks
+        d6 = [np.array(b[1][4][0]) for b in buffer.memory]  # race_progress
+        d7 = [np.array(b[1][5]) for b in buffer.memory]  # input_steer
+        d8 = [np.array(b[1][6]) for b in buffer.memory]  # input_gas_pedal
+        d9 = [np.array(b[1][7]) for b in buffer.memory]  # input_brake
+        d10 = [np.array(b[1][8]) for b in buffer.memory]  # gear
+        d11 = [np.array(b[1][9]) for b in buffer.memory]  # aim_yaw
+        d12 = [np.array(b[1][10]) for b in buffer.memory]  # aim_pitch
+        d13 = [np.array(b[1][11]) for b in buffer.memory]  # steer_angle
+        d14 = [np.array(b[1][12]) for b in buffer.memory]  # slip_coef
+        d15 = [np.array(b[1][13]) for b in buffer.memory]  # crashed
+        d16 = [np.array(b[1][14][0]) for b in buffer.memory]  # failure counter
+        d17 = [b[3] or b[4] for b in buffer.memory]  # eoes (end of episode)
+        d18 = [b[2] for b in buffer.memory]  # rewards
+        d19 = [b[5] for b in buffer.memory]  # infos
+        d20 = [b[3] for b in buffer.memory]  # terminated
+        d21 = [b[4] for b in buffer.memory]  # truncated
 
         if self.__len__() > 0:
             self.data[0] += d0
@@ -1163,8 +1158,6 @@ class MemoryR2D2mini(R2D2Memory):
             self.data[19] += d19
             self.data[20] += d20
             self.data[21] += d21
-            self.data[22] += d22
-            self.data[23] += d23
 
         else:
             self.data.append(d0)
@@ -1189,8 +1182,6 @@ class MemoryR2D2mini(R2D2Memory):
             self.data.append(d19)
             self.data.append(d20)
             self.data.append(d21)
-            self.data.append(d22)
-            self.data.append(d23)
 
         to_trim = self.__len__() - self.memory_size
         if to_trim > 0:
@@ -1216,7 +1207,5 @@ class MemoryR2D2mini(R2D2Memory):
             self.data[19] = self.data[19][to_trim:]
             self.data[20] = self.data[20][to_trim:]
             self.data[21] = self.data[21][to_trim:]
-            self.data[22] = self.data[22][to_trim:]
-            self.data[23] = self.data[23][to_trim:]
 
         return self

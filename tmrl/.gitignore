@@ -126,3 +126,7 @@ venv.bak/
 dmypy.json
 
 *.idea
+
+/wandb
+
+*.pt

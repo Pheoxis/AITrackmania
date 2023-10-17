@@ -90,7 +90,7 @@ else:
             grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
             crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
             checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
-            min_nb_steps_before_failure=200 if cfg.MAP_NAME == "tmrl_test" else 120
+            min_nb_steps_before_failure=100
         )
         # INT = partial(
         #     TM2020InterfaceTQC, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,

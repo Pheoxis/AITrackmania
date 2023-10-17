@@ -5,6 +5,7 @@ import time
 # third-party imports
 import keyboard
 import numpy as np
+from matplotlib import pyplot as plt
 from scipy.interpolate import CubicSpline
 
 # local imports
@@ -28,14 +29,14 @@ def record_reward_dist(path_reward=PATH_REWARD):
             is_recording = True
         if is_recording:
             data = client.retrieve_data(sleep_if_empty=0.01)  # we need many points to build a smooth curve
-            terminated = bool(data[8])
+            terminated = bool(data[9])
             if keyboard.is_pressed('q') or terminated:
                 logging.info(f"Computing reward function checkpoints from captured positions...")
                 logging.info(f"Initial number of captured positions: {len(positions)}")
                 positions = np.array(positions)
 
                 final_positions = [positions[0]]
-                dist_between_points = 0.1
+                dist_between_points = 2.1
                 j = 1
                 move_by = dist_between_points
                 pt1 = final_positions[-1]
@@ -52,27 +53,68 @@ def record_reward_dist(path_reward=PATH_REWARD):
                         move_by = dst  # remaining distance
 
                 final_positions = np.array(final_positions)
-                upsampled_arr = interp_points_with_cubic_spline(final_positions)
-                # print(final_positions)
-                # print()
-                # print(upsampled_arr)
-                logging.info(f"Final number of checkpoints in the reward function: {len(upsampled_arr)}")
+                upsampled_arr = interp_points_with_cubic_spline(final_positions, data_density=1.5)
+                spaced_points = space_points(upsampled_arr)
+                print(f"final_positions: {final_positions}", end="\n\n")
+                print(f"upsampled_arr: {upsampled_arr}", end="\n\n")
+                print(f"spaced_points: {spaced_points}", end="\n\n")
+                logging.info(f"Final number of checkpoints in the reward function: {len(spaced_points)}")
 
-                pickle.dump(upsampled_arr, open(path, "wb"))
+                pickle.dump(spaced_points, open(path, "wb"))
                 logging.info(f"All done")
                 return
             else:
-                positions.append([data[2], data[3], data[4]])
+                positions.append([data[3], data[4], data[5]])
         else:
             time.sleep(0.05)  # waiting for user to press E
 
 
-def interp_points_with_cubic_spline(sub_array, data_density: int = 3):
+def space_points(points):
+    # Extract x, y, and z coordinates from the input points
+    x = points[:, 0]
+    y = points[:, 1]
+    z = points[:, 2]
+
+    # Calculate the cumulative distance between consecutive points, considering all coordinates
+    distances = np.sqrt(np.diff(x) ** 2 + np.diff(y) ** 2 + np.diff(z) ** 2)
+    cumulative_distances = np.cumsum(distances)
+    cumulative_distances = np.insert(cumulative_distances, 0, 0)  # Add a starting point distance of 0
+
+    # Create cubic spline interpolations for x, y, and z
+    cs_x = CubicSpline(cumulative_distances, x)
+    cs_y = CubicSpline(cumulative_distances, y)
+    cs_z = CubicSpline(cumulative_distances, z)
+
+    # Define the desired number of points (same as the input list)
+    desired_num_points = len(points)
+
+    # Generate evenly spaced points along the spline with the desired number of points
+    new_distances = np.linspace(0, cumulative_distances[-1], desired_num_points)
+    new_x = cs_x(new_distances)
+    new_y = cs_y(new_distances)
+    new_z = cs_z(new_distances)
+
+    # Combine the new x, y, and z coordinates into a 2D array
+    new_points = np.column_stack((new_x, new_y, new_z))
+
+    # Plot the input and output lists
+    plt.figure(figsize=(30, 20))
+
+    # Input points
+    plt.scatter(x, y, label='Input Points', color='blue', marker='o')
+
+    # Output points (interpolated)
+    plt.plot(new_x, new_y, label='Output Points (Interpolated)', color='red', marker='x')
+
+    return new_points
+
+
+def interp_points_with_cubic_spline(sub_array, data_density):
     original_x, original_y, original_z = sub_array.T
 
     # Calculate the new x-values based on data density (e.g., double the points)
-    original_i = np.arange(0, data_density * len(original_x), step=data_density)
-    new_i = np.arange(0, data_density * len(original_x) - 1)
+    original_i = np.arange(0, int(data_density * len(original_x)), step=data_density)
+    new_i = np.arange(0, int(data_density * len(original_x) - 1))
 
     # Perform cubic spline interpolation for each vector (x, y, z)
     cs_x = CubicSpline(original_i, original_x)

@@ -442,8 +442,8 @@ class TQCAgent(TrainingAgent):
     lr_entropy: float = 1e-3
     learn_entropy_coef: bool = True
     target_entropy: float = None
-    top_quantiles_to_drop: int = 2  # ~8% of total number of atoms
-    quantiles_number: int = 25
+    top_quantiles_to_drop: int = 3  # ~8% of total number of atoms
+    quantiles_number: int = 32
 
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
@@ -451,15 +451,15 @@ class TQCAgent(TrainingAgent):
         observation_space, action_space = self.observation_space, self.action_space
         quantiles_number = self.quantiles_number
         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
-        model = self.model_cls(observation_space, action_space, num_quantiles=quantiles_number)  # Use TQCActorCritic
+        model = self.model_cls(observation_space, action_space)  # Use TQCActorCritic
         logging.debug(f" device TQC: {device}")
         self.model = model.to(device)
         self.model_target = no_grad(deepcopy(self.model))
 
         # Set up optimizers for policy and q-function
-        self.actor_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor, weight_decay=0.001)
+        self.actor_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor, weight_decay=0.002)
         self.critic_optimizer = Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()),
-                                     lr=self.lr_critic, weight_decay=0.001)
+                                     lr=self.lr_critic, weight_decay=0.002)
 
         self.quantiles_total = self.model.q1.num_quantiles + self.model.q2.num_quantiles
 

@@ -44,18 +44,17 @@ def lstm(input_size, rnn_size, rnn_len, dropout: float = 0.0):
 class QRCNNQFunction(nn.Module):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=128, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
-            activation=nn.GELU, num_quantiles=25
+            self, observation_space, action_space, rnn_size=180, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
+            activation=nn.GELU
     ):
         super().__init__()
         self.activation = activation()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
-        self.num_quantiles = num_quantiles
         dim_act = action_space.shape[0]
         mlp1_size, mlp2_size, mlp3_size = mlp_branch_sizes
-        mlp_out_size = cfo.ALG_CONFIG["QUANTILES_NUMBER"]
+        self.num_quantiles = cfo.ALG_CONFIG["QUANTILES_NUMBER"]
 
         self.layerNormApi = nn.LayerNorm(mlp2_size)
 
@@ -72,10 +71,10 @@ class QRCNNQFunction(nn.Module):
             rnn_size,
             mlp3_size,
             device=self.device,
-            std_init=0.05
+            std_init=0.01
         )
 
-        self.mlp_out = nn.Linear(mlp3_size, mlp_out_size)
+        self.mlp_out = nn.Linear(mlp3_size, self.num_quantiles)
 
         self.h0 = None
         self.c0 = None
@@ -132,7 +131,7 @@ class QRCNNQFunction(nn.Module):
 class SquashedActorQRCNN(TorchActorModule):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=128, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
+            self, observation_space, action_space, rnn_size=180, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
             activation=nn.GELU
     ):
         super().__init__(
@@ -144,7 +143,7 @@ class SquashedActorQRCNN(TorchActorModule):
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
         dim_act = action_space.shape[0]
         mlp1_size, mlp2_size, mlp3_size = mlp_branch_sizes
-        mlp_out_size = cfo.ALG_CONFIG["QUANTILES_NUMBER"]
+        mlp_out_size = 1
 
         self.layerNormApi = nn.LayerNorm(mlp2_size)
 
@@ -161,7 +160,7 @@ class SquashedActorQRCNN(TorchActorModule):
             rnn_size,
             mlp3_size,
             device=self.device,
-            std_init=0.05
+            std_init=0.01
         )
 
         self.mlp_out = nn.Linear(mlp3_size, mlp_out_size)
@@ -262,8 +261,8 @@ class SquashedActorQRCNN(TorchActorModule):
 class QRCNNActorCritic(nn.Module):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_size=128, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
-            activation=nn.GELU, num_quantiles=25
+            self, observation_space, action_space, rnn_size=180, rnn_len=2, mlp_branch_sizes=(192, 256, 128),
+            activation=nn.GELU
     ):
         super().__init__()
 
@@ -274,8 +273,8 @@ class QRCNNActorCritic(nn.Module):
             observation_space, action_space, rnn_size, rnn_len, mlp_branch_sizes, activation
         )
         self.q1 = QRCNNQFunction(
-            observation_space, action_space, rnn_size, rnn_len, mlp_branch_sizes, activation, num_quantiles
+            observation_space, action_space, rnn_size, rnn_len, mlp_branch_sizes, activation
         )
         self.q2 = QRCNNQFunction(
-            observation_space, action_space, rnn_size, rnn_len, mlp_branch_sizes, activation, num_quantiles
+            observation_space, action_space, rnn_size, rnn_len, mlp_branch_sizes, activation
         )
