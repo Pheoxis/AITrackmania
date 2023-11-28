@@ -12,7 +12,7 @@ class TM2020InterfaceTQCmini(TM2020Interface):
             self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(160),
             record=False, save_replay: bool = False,
             grayscale: bool = False, resize_to: tuple = (128, 64),
-            finish_reward=cfg.REWARD_END_OF_TRACK, constant_penalty: float = 0.05,
+            finish_reward=cfg.END_OF_TRACK_REWARD, constant_penalty: float = 0.05,
             crash_penalty=cfg.CRASH_PENALTY, checkpoint_reward=cfg.CHECKPOINT_REWARD,
             lap_reward=cfg.LAP_REWARD
     ):
@@ -61,7 +61,7 @@ class TM2020InterfaceTQCmini(TM2020Interface):
 
         failure_counter = spaces.Box(low=0.0, high=15, shape=(1,))
 
-        next_checkpoints = spaces.Box(low=-100.0, high=100.0, shape=(2*cfg.POINTS_NUMBER,))
+        next_checkpoints = spaces.Box(low=-100.0, high=100.0, shape=(2 * cfg.POINTS_NUMBER,))
 
         return spaces.Tuple(
             (
@@ -108,7 +108,7 @@ class TM2020InterfaceTQCmini(TM2020Interface):
         cur_cp = int(data[0])
         cur_lap = int(data[1])
 
-        speed = np.array([data[2]], dtype='float32')
+        speed = np.array([data[2] / 500.], dtype='float32')
 
         pos = np.array([data[3], data[4], data[5]], dtype='float32')
 
@@ -126,7 +126,7 @@ class TM2020InterfaceTQCmini(TM2020Interface):
 
         slip_coef = np.array(data[16:18], dtype='float32')
 
-        crashed = np.array([data[18]], dtype='float32')
+        crashed = np.array([float(self.is_crashed)], dtype='float32')
 
         gear = np.array([data[19]], dtype='float32')
 
@@ -142,8 +142,11 @@ class TM2020InterfaceTQCmini(TM2020Interface):
 
         end_of_track = bool(data[9])
 
+        if not self.is_crashed:
+            self.crash_cooldown -= 1
+
         if end_of_track:
-            terminated = True  # sprawdzić czy to wgl jest wywoływane
+            terminated = True
             rew += self.finish_reward
             reward_sum += self.finish_reward
             failure_counter = 0.0

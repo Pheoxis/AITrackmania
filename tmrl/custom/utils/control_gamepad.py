@@ -1,22 +1,43 @@
 # standard library imports
 import platform
 
+import numpy as np
+
 if platform.system() == "Windows":
 
     import time
 
     def control_gamepad(gamepad, control):
         assert all(-1.0 <= c <= 1.0 for c in control), "This function accepts only controls between -1.0 and 1.0"
-        if control[0] > -0.4:  # gas
-            gamepad.right_trigger_float(value_float=control[0])
+        if control[0] > 0.0:  # gas
+            mapped_value = 0.165 * control[0] + 0.835  # f(-0.515)=0.75
+            gamepad.right_trigger_float(value_float=mapped_value)  # car starts driving from 0.75
         else:
             gamepad.right_trigger_float(value_float=0.0)
         if control[1] > 0.75:  # break
+            # mapped_value = 0.5 * control[0] + 0.5  # x0 = 1/2
             gamepad.left_trigger_float(value_float=control[1])
         else:
             gamepad.left_trigger_float(value_float=0.0)
-        gamepad.left_joystick_float(control[2], 0.0)  # turn
+
+        # gamepad.left_joystick_float(control[2], 0.0)  # turn
+        gamepad.left_joystick_float(upside_down_normal_y(control[2]), 0.0)  # turn
         gamepad.update()
+
+
+    def upside_down_normal_y(x, mu=0, sigma=0.4):
+        if -0.25 < x < 0.25:
+            return 0.
+        # Calculate the PDF of the standard normal distribution
+        pdf = 1.05 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
+
+        # Take the negative of the standard normal PDF to flip it
+        upside_down_pdf = -pdf + 1.045
+
+        if x < 0:
+            return max([-upside_down_pdf, -1.])
+        else:
+            return min([upside_down_pdf, 1.])
 
     def gamepad_reset(gamepad):
         gamepad.reset()

@@ -6,7 +6,7 @@ import json
 # local imports
 import config.config_constants as cfg
 import config.config_objects as cfg_obj
-from tools.record import record_reward_dist
+from tools.record_reward import record_reward_dist
 from tools.check_environment import check_env_tm20lidar, check_env_tm20full, check_env_tm20_trackmap
 from envs import GenericGymEnv
 from networking import Server, Trainer, RolloutWorker
@@ -66,9 +66,9 @@ def main(args):
                 check_env_tm20lidar()
         else:
             check_env_tm20full()
-    elif args.record_track:
-        pass
-        # record_track_map()
+    elif args.record_episode:
+        from tools.record_episode import record_episode
+        record_episode()
     else:
         raise ArgumentTypeError('Enter a valid argument')
 
@@ -93,11 +93,15 @@ if __name__ == "__main__":
     parser.add_argument('--record-reward', dest='record_reward', action='store_true',
                         help='utility to record a reward function in TM20')
 
+    parser.add_argument('-r', '--record-episode', dest='record_episode', action='store_true',
+                        help='utility to record a episode to store it in replay buffer in TM20')
+
     parser.add_argument('--check-environment', dest='check_env', action='store_true',
                         help='utility to check the environment')
 
     parser.add_argument('--no-wandb', dest='no_wandb', action='store_true',
-                        help='(use with --trainer) if you do not want to log results on Weights and Biases, use this option')
+                        help='(use with --trainer) if you do not want to log results on Weights and Biases, use this '
+                             'option')
 
     parser.add_argument('-d', '--config', type=json.loads, default={},
                         help='dictionary containing configuration options (modifiers) for the rtgym environment')

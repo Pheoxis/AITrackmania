@@ -9,6 +9,7 @@ from torch.distributions import Normal
 from actor import TorchActorModule
 from custom.models.MobileNetV3 import mobilenetv3_small, mobilenetv3_large
 from custom.models.model_blocks import mlp
+import config.config_constants as cfg
 
 # Constants
 LOG_STD_MIN = -20
@@ -154,7 +155,7 @@ class TwinQuantileQFunction(nn.Module):
 class TQCSquashedActorMobileNetV3(TorchActorModule):
     def __init__(
             self, observation_space, action_space, rnn_size=100, rnn_len=2,
-            mlp_sizes=(128, 256, 100), activation=nn.GELU, num_classes=8
+            mlp_sizes=(128, 256, 100), activation=nn.GELU, num_classes=8, seed=cfg.SEED
     ):
         super().__init__(
             observation_space, action_space

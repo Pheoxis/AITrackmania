@@ -1,4 +1,5 @@
 # standard library imports
+import logging
 import os
 import pickle
 import random
@@ -6,8 +7,7 @@ import zlib
 from abc import ABC, abstractmethod
 from pathlib import Path
 from random import randint
-import logging
-import config.config_constants as cfg
+
 logging.basicConfig(level=logging.INFO)
 
 # third-party imports
@@ -17,17 +17,21 @@ import numpy as np
 # local imports
 from util import collate_torch
 
-
 __docformat__ = "google"
 
 
-def check_samples_crc(original_po, original_a, original_o, original_r, original_d, original_t, rebuilt_po, rebuilt_a, rebuilt_o, rebuilt_r, rebuilt_d, rebuilt_t):
-    assert original_po is None or str(original_po) == str(rebuilt_po), f"previous observations don't match:\noriginal:\n{original_po}\n!= rebuilt:\n{rebuilt_po}"
+def check_samples_crc(original_po, original_a, original_o, original_r, original_d, original_t, rebuilt_po, rebuilt_a,
+                      rebuilt_o, rebuilt_r, rebuilt_d, rebuilt_t):
+    assert original_po is None or str(original_po) == str(
+        rebuilt_po), f"previous observations don't match:\noriginal:\n{original_po}\n!= rebuilt:\n{rebuilt_po}"
     assert str(original_a) == str(rebuilt_a), f"actions don't match:\noriginal:\n{original_a}\n!= rebuilt:\n{rebuilt_a}"
-    assert str(original_o) == str(rebuilt_o), f"observations don't match:\noriginal:\n{original_o}\n!= rebuilt:\n{rebuilt_o}"
+    assert str(original_o) == str(
+        rebuilt_o), f"observations don't match:\noriginal:\n{original_o}\n!= rebuilt:\n{rebuilt_o}"
     assert str(original_r) == str(rebuilt_r), f"rewards don't match:\noriginal:\n{original_r}\n!= rebuilt:\n{rebuilt_r}"
-    assert str(original_d) == str(rebuilt_d), f"terminated don't match:\noriginal:\n{original_d}\n!= rebuilt:\n{rebuilt_d}"
-    assert str(original_t) == str(rebuilt_t), f"truncated don't match:\noriginal:\n{original_t}\n!= rebuilt:\n{rebuilt_t}"
+    assert str(original_d) == str(
+        rebuilt_d), f"terminated don't match:\noriginal:\n{original_d}\n!= rebuilt:\n{rebuilt_d}"
+    assert str(original_t) == str(
+        rebuilt_t), f"truncated don't match:\noriginal:\n{original_t}\n!= rebuilt:\n{rebuilt_t}"
     original_crc = zlib.crc32(str.encode(str((original_a, original_o, original_r, original_d, original_t))))
     crc = zlib.crc32(str.encode(str((rebuilt_a, rebuilt_o, rebuilt_r, rebuilt_d, rebuilt_t))))
     assert crc == original_crc, f"CRC failed: new crc:{crc} != old crc:{original_crc}.\nEither the custom pipeline is corrupted, or crc_debug is False in the rollout worker.\noriginal sample:\n{(original_a, original_o, original_r, original_d)}\n!= rebuilt sample:\n{(rebuilt_a, rebuilt_o, rebuilt_r, rebuilt_d)}"
@@ -42,6 +46,7 @@ class Memory(ABC):
        When overriding `__init__`, don't forget to call `super().__init__` in the subclass.
        Your `__init__` method needs to take at least all the arguments of the superclass.
     """
+
     def __init__(self,
                  device,
                  nb_steps,
@@ -193,6 +198,7 @@ class TorchMemory(Memory, ABC):
        When overriding `__init__`, don't forget to call `super().__init__` in the subclass.
        Your `__init__` method needs to take at least all the arguments of the superclass.
     """
+
     def __init__(self,
                  device,
                  nb_steps,
@@ -261,20 +267,22 @@ class R2D2Memory(Memory, ABC):
                          device=device,
                          # info_index=info_index
                          )
-        self.previous_episode = None
-        self.last_index = 0
+        self.previous_episode = 0
         self.end_episodes_indices = []
-        self.chosen_episode = None
-        # self.burn_ins = (2, 40)
+        self.chosen_episode = 0
+        self.burn_ins = (20, 40)
         self.isNewEpisode = True
-        self.chosen_burn_in = None
+        self.chosen_burn_in = 0
         self.reward_sums = []
-
+        self.indices = []
+        self.cur_idx = 0
+        self.batch_size = batch_size
 
     def collate(self, batch, device):
         return collate_torch(batch, device)
 
-    def find_zero_rewards_indices(self, reward_sums):
+    @staticmethod
+    def find_zero_rewards_indices(reward_sums):
         zero_rewards_indices = []
         prev_reward_sum = None
 
@@ -287,7 +295,8 @@ class R2D2Memory(Memory, ABC):
 
         return zero_rewards_indices
 
-    def normalize_list(self, input_list):
+    @staticmethod
+    def normalize_list(input_list):
         # Find the minimum and maximum values in the list
         min_val = min(input_list)
         max_val = max(input_list)
@@ -301,90 +310,91 @@ class R2D2Memory(Memory, ABC):
 
         return normalized_list
 
-    # potential problem if memory is being trimmed
     def sample_indices(self):
+
         self.end_episodes_indices = self.find_zero_rewards_indices(self.data[19])
-        self.reward_sums = [self.data[19][index]['reward_sum'] for index in self.end_episodes_indices] # 19 -> infos
+        self.reward_sums = [self.data[19][index]['reward_sum'] for index in self.end_episodes_indices]
+        # print(self.end_episodes_indices)
+        batch_size = self.batch_size
 
         if len(self.end_episodes_indices) == 0:
-            if self.last_index + self.batch_size > len(self):
-                self.last_index = 0
-                indices = list(i for i in range(len(self) - self.batch_size, len(self) - 1))
+            if self.cur_idx == 0:
+                self.cur_idx += (3 * batch_size) // 4
+                # self.cur_idx += batch_size // 2
+                pom = tuple(range(0, self.cur_idx))
+                print(pom)
+                return pom
             else:
-                cur_idx = self.last_index
-                self.last_index += self.batch_size
-                indices = list(i for i in range(cur_idx, self.last_index - 1))
+                if self.cur_idx + batch_size < len(self):
+                    pom = tuple(range(self.cur_idx, self.cur_idx + batch_size))
+                    # self.cur_idx += batch_size // 2
+                    self.cur_idx += (3 * batch_size) // 4
+                    print(pom)
+                    return pom
+                else:
+                    pom = tuple(range(len(self) - batch_size, len(self) - 1))
+                    print(pom)
+                    self.cur_idx = 0
+                    return pom
         else:
             if self.isNewEpisode:
-                # Select a random episode based on reward sums
-                # weights = self.normalize_list(self.reward_sums)
-                # napisać ifa gdy len(self.reward_sums) == 1
                 if len(self.reward_sums) == 1:
                     self.chosen_episode = self.end_episodes_indices[0]
                     self.previous_episode = 0
-                    if self.debug:
-                        print(f"previous_episode: {self.previous_episode}")
-                        print(f"chosen_episode: {self.chosen_episode}")
                 else:
-
-                    self.chosen_episode = random.choices(
-                        self.end_episodes_indices, weights=self.normalize_list(self.reward_sums),
-                        k=1
-                    )[0]
+                    if sum(self.reward_sums) > 0:
+                        self.chosen_episode = random.choices(
+                            self.end_episodes_indices, weights=self.reward_sums,
+                            k=1
+                        )[0]
+                    else:
+                        self.chosen_episode = random.choices(
+                            self.end_episodes_indices, weights=self.normalize_list(self.reward_sums),
+                            k=1
+                        )[0]
                     previous_episode_index = sorted(self.end_episodes_indices).index(self.chosen_episode) - 1
                     if previous_episode_index < 0:
                         self.previous_episode = 0
                     else:
                         self.previous_episode = self.end_episodes_indices[previous_episode_index]
-                    if self.debug:
-                        print(f"previous_episode: {self.previous_episode}")
-                        print(f"chosen_episode: {self.chosen_episode}")
 
                 episode_length = self.chosen_episode - self.previous_episode
-                self.chosen_burn_in = random.randint(int(episode_length * 0.04), int(episode_length * 0.5))
+                self.chosen_burn_in = random.randint(self.burn_ins[0], self.burn_ins[1])  # Losowanie burn-in
 
-                if self.debug:
-                    print(f"episode_length: {episode_length}")
-                    print(f"chosen_burn_in: {self.chosen_burn_in}")
-
-                self.isNewEpisode = False
-
-                if self.chosen_episode - self.previous_episode > self.batch_size + self.chosen_burn_in:
-                    cur_idx = self.previous_episode + self.chosen_burn_in
-                    self.last_index = cur_idx + self.batch_size
-                    indices = list(i for i in range(cur_idx, self.last_index - 1))
+                if episode_length <= batch_size + self.chosen_burn_in:  # kiedy epizod jest krótszy od batch size
+                    # print("krótszy batch")
+                    result = tuple(range(self.previous_episode, self.chosen_episode - 1))
+                    # print(result)
+                    return result
                 else:
-                    self.last_index = self.chosen_episode
-                    indices = list(i for i in range(self.previous_episode, self.chosen_episode - 1))
+                    # print("pierwszy batch")
+                    if self.previous_episode < 0:
+                        self.previous_episode = 0
+
+                    self.cur_idx = self.previous_episode + self.chosen_burn_in
+                    result = tuple(range(self.cur_idx, self.cur_idx + batch_size))
+                    self.cur_idx += batch_size
+                    # print(result)
+                    self.isNewEpisode = False
+                    return result
             else:
-                # Continue from the last index if not a new episode
-                if self.chosen_episode - self.last_index > self.batch_size:
-                    cur_idx = self.last_index
-                    self.last_index += self.batch_size
-                    indices = list(i for i in range(cur_idx, cur_idx + self.batch_size - 1))
-                else:
-                    if self.chosen_episode - self.previous_episode > self.batch_size:
-                        indices = list(i for i in range(self.chosen_episode - self.batch_size, self.chosen_episode - 1))
-                    else:
-                        indices = list(i for i in range(self.previous_episode, self.chosen_episode - 1))
+                # self.cur_idx -= batch_size // 2
+                self.cur_idx -= (3 * batch_size) // 4
+
+                if self.cur_idx + batch_size >= self.chosen_episode:  # ostatni batch epizodu
+                    # print("ostatni batch")
                     self.isNewEpisode = True
-                    self.last_index = self.chosen_episode
-
-        while len(indices) < self.batch_size:
-            random_index = random.randint(0, len(self) - 1)
-            indices.append(random_index)
-
-        while len(indices) > self.batch_size:
-            indices.pop()
-
-        if indices is None:
-            raise Exception("Indices cannot be None!")
-        # if len(indices) < self.batch_size - 1:
-        #     raise Exception("Indices cannot be less!")
-
-        indices = tuple(indices)
-
-        return indices
+                    result = tuple(range(self.chosen_episode - batch_size, self.chosen_episode - 1))
+                    # print(result)
+                    self.cur_idx = self.chosen_episode
+                    return result
+                else:
+                    # print("kontynuacja batcha ")
+                    self.isNewEpisode = False
+                    result = tuple(range(self.cur_idx, self.cur_idx + batch_size))
+                    # print(result)
+                    self.cur_idx += batch_size
+                    return result
 
     def sample(self):
         indices = self.sample_indices()
