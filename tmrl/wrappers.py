@@ -13,10 +13,10 @@ class AffineObservationWrapper(gymnasium.ObservationWrapper):
         self.shift = shift
         self.scale = scale
         self.observation_space = gymnasium.spaces.Box(
-                                                         self.observation(env.observation_space.low),
-                                                         self.observation(env.observation_space.high),
-                                                         dtype=env.observation_space.dtype
-                                                     )
+            self.observation(env.observation_space.low),
+            self.observation(env.observation_space.high),
+            dtype=env.observation_space.dtype
+        )
 
     def observation(self, observation):
         return (observation + self.shift) * self.scale
@@ -29,6 +29,7 @@ class Float64ToFloat32(gymnasium.ObservationWrapper):
     def observation(self, observation):
         observation = deepmap({np.ndarray: float64_to_float32,
                                float: float_to_float32,
+                               int: int_to_float32,
                                np.float32: float_to_float32,
                                np.float64: float_to_float32}, observation)
         return observation
@@ -51,6 +52,7 @@ def deepmap(f, m):
     elif isinstance(m, Mapping):
         return type(m)((k, deepmap(f, m[k])) for k in m)
     else:
+
         raise AttributeError(f"m is a {type(m)}, not a Sequence nor a Mapping: {m}")
 
 
@@ -60,3 +62,7 @@ def float64_to_float32(x):
 
 def float_to_float32(x):
     return np.asarray([x, ], np.float32)
+
+
+def int_to_float32(x):
+    return np.asarray([float(x), ], np.float32)

@@ -1117,11 +1117,11 @@ Note that `train()` returns a python dictionary in which you can store the metri
     def train(self, batch):
 
 
-  """
-  Adapted from the SAC implementation of OpenAI Spinup
-  
-  https://github.com/openai/spinningup/tree/master/spinup/algos/pytorch/sac
-  """
+"""
+Adapted from the SAC implementation of OpenAI Spinup
+
+https://github.com/openai/spinningup/tree/master/spinup/algos/pytorch/sac
+"""
 o, a, r, o2, d, _ = batch  # these tensors are collated on device
 # note that we purposefully ignore the truncated signal ( _ )
 # thus, our value estimator will not be affected by episode truncation
@@ -1135,7 +1135,7 @@ else:
 if loss_alpha is not None:
   self.alpha_optimizer.zero_grad()
   loss_alpha.backward()
-  self.alpha_optimizer.step()
+  self.alpha_optimizer.send_training_sample()
 q1 = self.model.q1(o, a)
 q2 = self.model.q2(o, a)
 with torch.no_grad():
@@ -1149,7 +1149,7 @@ loss_q2 = ((q2 - backup) ** 2).mean()
 loss_q = loss_q1 + loss_q2
 self.critic_optimizer.zero_grad()
 loss_q.backward()
-self.critic_optimizer.step()
+self.critic_optimizer.send_training_sample()
 for p in self.q_params:
   p.requires_grad = False
 q1_pi = self.model.q1(o, pi)
@@ -1158,7 +1158,7 @@ q_pi = torch.min(q1_pi, q2_pi)
 loss_pi = (alpha_t * logp_pi - q_pi).mean()
 self.actor_optimizer.zero_grad()
 loss_pi.backward()
-self.actor_optimizer.step()
+self.actor_optimizer.send_training_sample()
 for p in self.q_params:
   p.requires_grad = True
 with torch.no_grad():

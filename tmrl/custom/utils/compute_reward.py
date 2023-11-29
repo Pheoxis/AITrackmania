@@ -1,5 +1,6 @@
 # standard library imports
 import atexit
+import math
 import os
 import pickle
 import shutil
@@ -9,8 +10,11 @@ import time
 # third-party imports
 import numpy as np
 import logging
-from config import config_constants as cfg
 
+import pandas as pd
+
+from config import config_constants as cfg
+from sklearn.linear_model import LinearRegression
 import wandb
 
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +31,7 @@ class RewardFunction:
                  nb_obs_backward=8,
                  nb_zero_rew_before_failure=10,
                  min_nb_steps_before_failure=int(2.5 * 20),
-                 max_dist_from_traj=50.0,
+                 max_dist_from_traj=15.0,
                  crash_penalty=10.0,
                  constant_penalty=0.0,
                  low_threshold=10,
@@ -64,9 +68,11 @@ class RewardFunction:
         self.crash_penalty = crash_penalty
         self.crash_counter = 1
         self.constant_penalty = constant_penalty
-        # self.gas_reward = 0.0001
-        # self.brake_penalty = -0.0002
-        # self.counter = 0
+        self.lap_cur_cooldown = cfg.LAP_COOLDOWN
+        self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
+        self.new_lap = False
+        self.near_finish = False
+        self.new_checkpoint = False
         self.reward_sum = 0.0
         self.isFinished = False
         self.reward_sum_list = []
@@ -74,9 +80,18 @@ class RewardFunction:
         self.high_threshold = high_threshold
         self.cur_distance = 0
         self.prev_distance = 0
-        self.cooldown = 5
-        self.change_cooldown = 5
-        self.window_size = 25
+
+        self.window_size = 40
+        self.cooldown = self.window_size // 4
+        self.change_cooldown = self.cooldown
+        self.average_distance = self.calculate_average_distance()
+        # self.n = max(int(0.08 / self.average_distance), 1)  # TODO: find optimal value
+        self.n = max(1, min(len(self.data), int(0.75 / max(self.average_distance, 0.01)))) # intervals of ~0.75m
+        print(f"n: {self.n}")
+
+        if cfg.WANDB_DEBUG_REWARD:
+            self.send_reward = []
+
 
         wandb_dir = tempfile.mkdtemp()  # prevent wandb from polluting the home directory
         atexit.register(shutil.rmtree, wandb_dir, ignore_errors=True)  # clean up after wandb atexit handler finishes
@@ -97,24 +112,36 @@ class RewardFunction:
         # self.tmp_counter = 0
         # self.traj = []
 
-    def get_n_next_checkpoints_xy(self, pos, number_of_next_points: int = 3):
-        next_indices = [self.cur_idx + 2 * i for i in range(1, number_of_next_points + 1)]
+
+    def get_n_next_checkpoints_xy(self, pos, number_of_next_points: int = cfg.POINTS_NUMBER):
+        next_indices = [self.cur_idx + i * self.n for i in range(1, number_of_next_points + 1)]
+
         for i in range(len(next_indices)):
             if next_indices[i] >= len(self.data):
                 next_indices[i] = len(self.data) - 1
         route_to_next_poses = []
         for pos_index in next_indices:
             for i in (0, -1):
-                route_to_next_poses.append(self.data[pos_index][i] - pos[i])
+
+                route_to_next_poses.append((self.data[pos_index][i] - pos[i]) * 10.)
 
         return route_to_next_poses
 
-    def compute_reward(self, pos, crashed: bool = False, speed: float = None):
-        # self.tmp_counter += 1
-        # if self.tmp_counter % 10 == 0:
-        #     print(f"pos: {pos}, first pos from reward: {self.data[0]}")
+    def calculate_average_distance(self):
+        # Calculate the Euclidean distance between consecutive points in the trajectory
+        distances = np.linalg.norm(np.diff(self.data, axis=0), axis=1)
+
+        # Compute the average distance
+        average_distance = np.mean(distances)
+
+        return average_distance
+
+    def compute_reward(self, pos, crashed: bool = False, speed: float = None,
+                       next_cp: bool = False, next_lap: bool = False):
+
         terminated = False
         self.step_counter += 1
+        self.prev_idx = self.cur_idx
         min_dist = np.inf
         index = self.cur_idx
         temp = self.nb_obs_forward
@@ -130,7 +157,9 @@ class RewardFunction:
             # stop condition
             if index >= self.datalen or temp <= 0:
                 break
-        reward = (best_index - self.cur_idx) / 25.0
+
+        reward = (best_index - self.cur_idx) / 22.
+
         if best_index == self.cur_idx:  # if the best index didn't change, we rewind (more Markovian reward)
             min_dist = np.inf
             index = self.cur_idx
@@ -154,19 +183,63 @@ class RewardFunction:
             self.failure_counter = 0
         self.cur_idx = best_index
 
-        if not self.isFinished:
-            if self.cur_idx > len(self.data) - 5:
-                reward += cfg.REWARD_END_OF_TRACK
-                self.isFinished = True
 
-        if speed < 0:
-            reward -= 1.0
+        # deviation_penalty
+        if best_index != self.cur_idx:
+            print(f"before: {reward}")
+            reward -= abs((2 / (1 + np.exp(-0.025 * min_dist))) - 1)
+            print(f"after: {reward}")
+
+        if next_lap and self.cur_idx > self.prev_idx:
+            self.new_lap = True
+
+
+        if self.cur_idx > int(len(self.data) * 0.9925) and self.cur_idx > self.prev_idx:
+            self.near_finish = True
+
+        if next_cp and self.checkpoint_cur_cooldown > 0:  # nie działa
+            self.new_checkpoint = True
+
+        if self.new_lap and self.lap_cur_cooldown > 0:
+            reward += cfg.LAP_REWARD
+            self.lap_cur_cooldown -= 1
+            print(f"lap reward added: {reward}")
+
+        if self.new_checkpoint and self.checkpoint_cur_cooldown > 0:
+            reward += cfg.CHECKPOINT_REWARD
+            self.checkpoint_cur_cooldown -= 1
+            print(f"checkpoint reward added: {reward}")
+
+        if self.near_finish and self.lap_cur_cooldown > 0:
+            near_finish_bonus = self.cur_idx / len(self.data) * cfg.END_OF_TRACK_REWARD
+            reward += near_finish_bonus
+            self.lap_cur_cooldown -= 1
+            print(f"finish reward added: {near_finish_bonus}")
+
+        if self.near_finish or self.new_lap and 5 < self.cur_idx < len(self.data) * 0.1:
+            self.new_lap = False
+            self.near_finish = False
+
+        if self.checkpoint_cur_cooldown <= 0:
+            self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
+            self.new_checkpoint = False
+
+        if speed <= 0:
+            reward -= 1/(1 + np.exp(-0.1 * speed - 3)) - 1
+
 
         if crashed:
-            reward -= abs(self.crash_penalty) * self.crash_counter
+            reward -= round(abs(self.crash_penalty) * math.sqrt(self.crash_counter), 4)
             self.crash_counter += 1
 
-        reward -= abs(self.constant_penalty)
+        if reward != 0.0:
+            reward -= abs(self.constant_penalty)
+
+        # clipping reward (maps values above 6 and below -6 to 1 and -1)
+        reward = math.tanh(6 / (1 + np.exp(-0.7 * reward)) - 3)
+
+        if cfg.WANDB_DEBUG_REWARD:
+            self.send_reward.append(reward)
 
         self.reward_sum += reward
         if terminated:
@@ -177,40 +250,67 @@ class RewardFunction:
                 self.reward_sum_list.append(self.reward_sum)
                 wandb.log({"Run reward": self.reward_sum})
                 self.change_min_nb_steps_before_failure()
-            # logging.info(f"Total reward of the run: {self.reward_sum}")
-            # if self.counter % 2 == 0:
-            #     self.min_nb_steps_before_failure += 2
+
+                if cfg.WANDB_DEBUG_REWARD:
+                    send_reward_df = pd.DataFrame({"Reward": self.send_reward})
+                    summary_stats = send_reward_df.describe()
+                    summary_stats = summary_stats.reset_index()
+
+                    q1_value = float(summary_stats.loc[summary_stats['index'] == '25%', 'Reward'].iloc[0])
+                    q2_value = float(summary_stats.loc[summary_stats['index'] == '50%', 'Reward'].iloc[0])
+                    q3_value = float(summary_stats.loc[summary_stats['index'] == '75%', 'Reward'].iloc[0])
+                    mean_value = float(summary_stats.loc[summary_stats['index'] == 'mean', 'Reward'].iloc[0])
+                    max_value = float(summary_stats.loc[summary_stats['index'] == 'max', 'Reward'].iloc[0])
+                    min_value = float(summary_stats.loc[summary_stats['index'] == 'min', 'Reward'].iloc[0])
+                    count_value = float(summary_stats.loc[summary_stats['index'] == 'count', 'Reward'].iloc[0])
+                    std_value = float(summary_stats.loc[summary_stats['index'] == 'std', 'Reward'].iloc[0])
+
+                    wandb.log(
+                        {
+                            "Run reward": self.reward_sum,
+                            "Q1": q1_value, "Q2": q2_value, "Q3": q3_value, "mean": mean_value,
+                            "max": max_value, "min": min_value,
+                            "count": count_value, "std": std_value
+                        }
+                    )
+                    self.send_reward.clear()
+                else:
+                    wandb.log({"Run reward": self.reward_sum})
 
         return reward, terminated, self.failure_counter, self.reward_sum
 
     def compute_race_progress(self):
-        return self.cur_idx/len(self.data)
+        return self.cur_idx / len(self.data)
 
-    def check_linear_coefficent(self, window_size: int = 5):
-        # Define the number of points
-        num_points = len(self.reward_sum_list[window_size:])
+    def calculate_ema(self, alpha: float = 0.25):
+        ema_values = [self.reward_sum_list[0]]
+        for i in range(1, len(self.reward_sum_list)):
+            ema = alpha * self.reward_sum_list[i] + (1 - alpha) * ema_values[-1]
+            ema_values.append(ema)
+        return ema_values
 
-        # Generate list1 as a linspace with the same number of points as list2
-        x_axis = np.linspace(start=min(self.reward_sum_list[window_size:]), stop=max(self.reward_sum_list[window_size:]), num=num_points)
-
-        # Calculate the correlation coefficient
-        correlation_matrix = np.corrcoef(x_axis, self.reward_sum_list[window_size:])
-
-        # The correlation coefficient is at position (0, 1) or (1, 0) in the correlation matrix
-        correlation_coefficient = correlation_matrix[0, 1]
-        return correlation_coefficient
+    @staticmethod
+    def check_linear_coefficent(data):
+        x = np.arange(len(data)).reshape(-1, 1)
+        y = np.array(data).reshape(-1, 1)
+        model = LinearRegression().fit(x, y)
+        return model.coef_[0][0]
 
     def change_min_nb_steps_before_failure(self):
-        if len(self.reward_sum_list) <= self.window_size:
+        if len(self.reward_sum_list) <= self.window_size * 2 or len(self.send_reward) > 100:
             return
         if self.change_cooldown <= 0:
-            corr = self.check_linear_coefficent()
-            if corr <= 0.03:
-                if self.min_nb_steps_before_failure <= 300:
-                    self.min_nb_steps_before_failure += 5
-            elif corr >= 0.15:
-                if self.min_nb_steps_before_failure >= 45:
-                    self.min_nb_steps_before_failure -= 15
+            ema_values = self.calculate_ema()
+            print(f"ema_values: {ema_values}")
+            corr = self.check_linear_coefficent(ema_values[self.window_size:])
+            print(f"corr: {corr}")
+            if corr <= 0.05:
+                if self.min_nb_steps_before_failure <= 270:
+                    self.min_nb_steps_before_failure += 2
+            elif corr >= 0.095:
+                if self.min_nb_steps_before_failure >= 96:
+                    self.min_nb_steps_before_failure -= 8
+
             self.change_cooldown = self.cooldown
         else:
             self.change_cooldown -= 1
@@ -220,11 +320,6 @@ class RewardFunction:
         """
         Resets the reward function for a new episode.
         """
-        # from pathlib import Path
-        # import pickle as pkl
-        # path_traj = Path.home() / 'TmrlData' / 'reward' / 'traj.pkl'
-        # with open(path_traj, 'wb') as file_traj:
-        #     pkl.dump(self.traj, file_traj)
 
         self.cur_idx = 0
         self.prev_idx = 0
@@ -232,5 +327,5 @@ class RewardFunction:
         self.failure_counter = 0
         self.reward_sum = 0.0
         self.crash_counter = 1
-
-        # self.traj = []
+        self.lap_cur_cooldown = cfg.LAP_COOLDOWN
+        self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN

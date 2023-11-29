@@ -126,4 +126,4 @@ venv.bak/
 dmypy.json
 
 *.idea
-test.py
+plotRewardPoints.py

@@ -181,6 +181,8 @@ class TrainingOffline:
             print(f"reward_sums: {self.memory.reward_sums}")
 
         self.epoch += 1
+        # self.agent.pi_scheduler.step()
+        # self.agent.q_scheduler.step()
         return stats
 
 
