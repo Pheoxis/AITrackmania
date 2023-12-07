@@ -308,7 +308,15 @@ def run_with_wandb(entity, project, run_id, interface, run_cls, checkpoint_path:
     err_cpt = 0
     while not wandb_initialized:
         try:
-            wandb.init(dir=wandb_dir, entity=entity, project=project, id=run_id, resume=resume, config=config)
+            wandb.init(
+                dir=wandb_dir,
+                entity=entity,
+                project=project,
+                id=run_id + " TRAINER",
+                resume=resume,
+                config=config.update(cfg.create_config()),
+                job_type="trainer"
+            )
             wandb_initialized = True
 
         except Exception as e:

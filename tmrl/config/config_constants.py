@@ -3,6 +3,9 @@ import os
 from pathlib import Path
 import logging
 import json
+
+from custom.utils.compute_reward import RewardFunction
+
 logging.basicConfig(level=logging.INFO)
 TMRL_FOLDER = Path.home() / "TmrlData"
 CHECKPOINTS_FOLDER = TMRL_FOLDER / "checkpoints"
@@ -41,6 +44,12 @@ SERVER_IP_FOR_TRAINER = PUBLIC_IP_SERVER if not LOCALHOST_TRAINER else "127.0.0.
 
 ENV_CONFIG = TMRL_CONFIG["ENV"]
 RTGYM_INTERFACE = str(ENV_CONFIG["RTGYM_INTERFACE"]).upper()
+SEED = ENV_CONFIG["SEED"]
+MAP_NAME = ENV_CONFIG["MAP_NAME"]
+MIN_NB_STEPS_BEFORE_FAILURE = ENV_CONFIG["MIN_NB_STEPS_BEFORE_FAILURE"]
+MAX_NB_STEPS_BEFORE_FAILURE = ENV_CONFIG["MAX_NB_STEPS_BEFORE_FAILURE"]
+OSCILLATION_PERIOD = ENV_CONFIG["OSCILLATION_PERIOD"]
+NB_OBS_FORWARD = ENV_CONFIG["NB_OBS_FORWARD"]
 PRAGMA_LIDAR = RTGYM_INTERFACE.endswith("LIDAR")  # True if Lidar, False if images
 # True if Lidar, False if images:
 PRAGMA_CUSTOM = RTGYM_INTERFACE.endswith("MOBILEV3") or RTGYM_INTERFACE.endswith("CUSTOM")
@@ -49,10 +58,18 @@ PRAGMA_TRACKMAP = RTGYM_INTERFACE.endswith("TRACKMAP")
 PRAGMA_BEST = RTGYM_INTERFACE.endswith("BEST")
 PRAGMA_BEST_TQC = RTGYM_INTERFACE.endswith("BEST_TQC")
 PRAGMA_MBEST_TQC = RTGYM_INTERFACE.endswith("MTQC")
+CRASH_PENALTY = ENV_CONFIG["CRASH_PENALTY"]
+CONSTANT_PENALTY = ENV_CONFIG["CONSTANT_PENALTY"]  # -abs(x) : added to the reward at each time step
+LAP_REWARD = ENV_CONFIG["LAP_REWARD"]
+LAP_COOLDOWN = ENV_CONFIG["LAP_COOLDOWN"]
+CHECKPOINT_REWARD = ENV_CONFIG["CHECKPOINT_COOLDOWN"]
+CHECKPOINT_COOLDOWN = ENV_CONFIG["CHECKPOINT_COOLDOWN"]
+END_OF_TRACK_REWARD = ENV_CONFIG["END_OF_TRACK_REWARD"]  # bonus reward at the end of the track
 
 if PRAGMA_PROGRESS or PRAGMA_TRACKMAP:
     PRAGMA_LIDAR = True
 LIDAR_BLACK_THRESHOLD = [55, 55, 55]  # [88, 88, 88] for tiny road, [55, 55, 55] FOR BASIC ROAD
+
 LAP_REWARD = TMRL_CONFIG["ENV"]["LAP_REWARD"]
 LAP_COOLDOWN = TMRL_CONFIG["ENV"]["LAP_COOLDOWN"]
 CHECKPOINT_REWARD = TMRL_CONFIG["ENV"]["CHECKPOINT_COOLDOWN"]
@@ -60,7 +77,7 @@ CHECKPOINT_COOLDOWN = TMRL_CONFIG["ENV"]["CHECKPOINT_COOLDOWN"]
 END_OF_TRACK_REWARD = TMRL_CONFIG["ENV"]["END_OF_TRACK_REWARD"]  # bonus reward at the end of the track
 CONSTANT_PENALTY = TMRL_CONFIG["ENV"]["CONSTANT_PENALTY"]  # -abs(x) : added to the reward at each time step
 CRASH_PENALTY = TMRL_CONFIG["ENV"]["CRASH_PENALTY"]
-SLEEP_TIME_AT_RESET = ENV_CONFIG["SLEEP_TIME_AT_RESET"]  # 1.5 to start in a Markov state with the lidar
+ENV_CONFIG["SLEEP_TIME_AT_RESET"]  # 1.5 to start in a Markov state with the lidar
 IMG_HIST_LEN = ENV_CONFIG["IMG_HIST_LEN"]  # 4 without RNN, 1 with RNN
 ACT_BUF_LEN = ENV_CONFIG["RTGYM_CONFIG"]["act_buf_len"]
 WINDOW_WIDTH = ENV_CONFIG["WINDOW_WIDTH"]
@@ -69,7 +86,9 @@ GRAYSCALE = ENV_CONFIG["IMG_GRAYSCALE"] if "IMG_GRAYSCALE" in ENV_CONFIG else Fa
 IMG_WIDTH = ENV_CONFIG["IMG_WIDTH"] if "IMG_WIDTH" in ENV_CONFIG else 64
 IMG_HEIGHT = ENV_CONFIG["IMG_HEIGHT"] if "IMG_HEIGHT" in ENV_CONFIG else 64
 
-POINTS_NUMBER = TMRL_CONFIG["ALG"]["POINTS_NUMBER"]
+PI_DISTRIBUTION = TMRL_CONFIG["ALG"]["PI_DISTRIBUTION"].lower()
+
+assert PI_DISTRIBUTION in ("tanhnormal", "normal"), "PI DISTRIBUTION SHOULD EITHER TANHNORMAL OR NORMAL"
 
 # DEBUGGING AND BENCHMARKING: ===================================
 # Only for checking the consistency of the custom networking methods, set it to False otherwise.
@@ -79,16 +98,21 @@ CRC_DEBUG_SAMPLES = 100  # Number of samples collected in CRC_DEBUG mode
 PROFILE_TRAINER = False  # Will profile each epoch in the Trainer when True
 SYNCHRONIZE_CUDA = False  # Set to True for profiling, False otherwise
 DEBUG_MODE = TMRL_CONFIG["DEBUG_MODE"] if "DEBUG_MODE" in TMRL_CONFIG.keys() else False
+
 SEED = TMRL_CONFIG["ENV"]["SEED"]
 MAP_NAME = TMRL_CONFIG["ENV"]["MAP_NAME"]
+
 
 # FILE SYSTEM: =================================================
 
 PATH_DATA = TMRL_FOLDER
 logging.debug(f" PATH_DATA:{PATH_DATA}")
 
-# 0 for not saving history, x for saving model history every x new model received by RolloutWorker
-MODEL_HISTORY = TMRL_CONFIG["MODEL"]["SAVE_MODEL_EVERY"]
+
+# 0 for not saving history, x for saving model history every x epochs new model received by RolloutWorker
+MODEL_CONFIG = TMRL_CONFIG["MODEL"]
+MODEL_HISTORY = MODEL_CONFIG["SAVE_MODEL_EVERY"]
+
 
 MODEL_PATH_WORKER = str(WEIGHTS_FOLDER / (RUN_NAME + ".tmod"))
 MODEL_PATH_SAVE_HISTORY = str(WEIGHTS_FOLDER / (RUN_NAME + "_"))
@@ -127,3 +151,86 @@ NB_WORKERS = None if TMRL_CONFIG["NB_WORKERS"] < 0 else TMRL_CONFIG["NB_WORKERS"
 BUFFER_SIZE = TMRL_CONFIG[
     "BUFFER_SIZE"]  # 268  435 456  # socket buffer size (200 000 000 is large enough for 1000 images right now)
 HEADER_SIZE = TMRL_CONFIG["HEADER_SIZE"]  # fixed number of characters used to describe the data length
+
+# MODEL CONFIG =========================
+MODEL_CONFIG = TMRL_CONFIG["MODEL"]
+SCHEDULER_CONFIG = MODEL_CONFIG["SCHEDULER"]
+NOISY_LINEAR_CRITIC = MODEL_CONFIG["NOISY_LINEAR_CRITIC"]
+NOISY_LINEAR_ACTOR = MODEL_CONFIG["NOISY_LINEAR_ACTOR"]
+DROPOUT = MODEL_CONFIG["DROPOUT"]
+
+
+# CREATE CONFIG ===================================
+def create_config():
+    config = dict()
+    alg_config = TMRL_CONFIG["ALG"]
+    model_config = TMRL_CONFIG["MODEL"]
+    scheduler_config = model_config["SCHEDULER"]
+    env_config = TMRL_CONFIG["ENV"]
+
+    config["TRAINING_STEPS_PER_ROUND"] = model_config
+    config["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"] = model_config["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"]
+    config["ENVIRONMENT_STEPS_BEFORE_TRAINING"] = model_config["ENVIRONMENT_STEPS_BEFORE_TRAINING"]
+    config["UPDATE_MODEL_INTERVAL"] = model_config["UPDATE_MODEL_INTERVAL"]
+    config["UPDATE_BUFFER_INTERVAL"] = model_config["UPDATE_BUFFER_INTERVAL"]
+    config["SAVE_MODEL_EVERY"] = model_config["SAVE_MODEL_EVERY"]
+    config["MEMORY_SIZE"] = model_config["MEMORY_SIZE"]
+    config["BATCH_SIZE"] = model_config["BATCH_SIZE"]
+    config["RNN_SIZES"] = model_config["RNN_SIZES"]
+
+    for index, size in enumerate(config["RNN_SIZES"]):
+        config[f"RNN_SIZE{index}"] = size
+
+    config["RNN_LENS"] = model_config["RNN_LENS"]
+
+    for index, size in enumerate(config["RNN_LENS"]):
+        config[f"RNN_LEN{index}"] = size
+
+    config["MLP_BRANCH_SIZES"] = model_config["MLP_BRANCH_SIZES"]
+
+    for index, size in enumerate(config["MLP_BRANCH_SIZES"]):
+        config[f"MLP_BRANCH_SIZE{index}"] = size
+
+    config["API_LAYERNORM"] = model_config["API_LAYERNORM"]
+    config["NOISY_LINEAR_ACTOR"] = model_config["NOISY_LINEAR_ACTOR"]
+    config["NOISY_LINEAR_CRITIC"] = model_config["NOISY_LINEAR_CRITIC"]
+    config["DROPOUT"] = model_config["DROPOUT"]
+
+    config["MIN_NB_STEPS_BEFORE_FAILURE"] = env_config["MIN_NB_STEPS_BEFORE_FAILURE"]
+    config["MAX_NB_STEPS_BEFORE_FAILURE"] = env_config["MAX_NB_STEPS_BEFORE_FAILURE"]
+    config["OSCILLATION_PERIOD"] = env_config["OSCILLATION_PERIOD"]
+    config["CRASH_PENALTY"] = env_config["CRASH_PENALTY"]
+    config["CONSTANT_PENALTY"] = env_config["CONSTANT_PENALTY"]
+    config["LAP_REWARD"] = env_config["LAP_REWARD"]
+    config["LAP_COOLDOWN"] = env_config["LAP_COOLDOWN"]
+    config["CHECKPOINT_REWARD"] = env_config["CHECKPOINT_REWARD"]
+    config["CHECKPOINT_COOLDOWN"] = env_config["CHECKPOINT_COOLDOWN"]
+
+    config["REWARD_END_OF_TRACK"] = env_config["END_OF_TRACK_REWARD"]
+    config["ALGORITHM"] = alg_config["ALGORITHM"]
+    config["LEARN_ENTROPY_COEF"] = alg_config["LEARN_ENTROPY_COEF"]
+    config["LR_ACTOR"] = alg_config["LR_ACTOR"]
+    config["LR_CRITIC"] = alg_config["LR_CRITIC"]
+    config["LR_CRITIC_DIVIDED_BY_LR_ACTOR"] = config["LR_CRITIC"] / config["LR_ACTOR"]
+
+    config["LR_ENTROPY"] = alg_config["LR_ENTROPY"]
+    config["GAMMA"] = alg_config["GAMMA"]
+    config["POLYAK"] = alg_config["POLYAK"]
+    config["TARGET_ENTROPY"] = alg_config["TARGET_ENTROPY"]
+    config["TOP_QUANTILES_TO_DROP"] = alg_config["TOP_QUANTILES_TO_DROP"]
+    config["QUANTILES_NUMBER"] = alg_config["QUANTILES_NUMBER"]
+    config["R2D2_REWIND"] = alg_config["R2D2_REWIND"]
+
+    config["POINTS_NUMBER"] = 2
+
+    config["SCHEDULER_T_0"] = scheduler_config["T_0"]
+    config["SCHEDULER_T_mult"] = scheduler_config["T_mult"]
+    config["SCHEDULER_eta_min"] = scheduler_config["eta_min"]
+    config["SCHEDULER_last_epoch"] = scheduler_config["last_epoch"]
+
+    config["IMG_WIDTH"] = env_config["IMG_WIDTH"]
+    config["IMG_HEIGHT"] = env_config["IMG_HEIGHT"]
+    config["IMG_GRAYSCALE"] = env_config["IMG_GRAYSCALE"]
+    config["IMG_HIST_LEN"] = env_config["IMG_HIST_LEN"]
+
+    return config

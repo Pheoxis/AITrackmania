@@ -16,7 +16,7 @@ import numpy as np
 
 # local imports
 from util import collate_torch
-
+import config.config_constants as cfg
 __docformat__ = "google"
 
 
@@ -277,6 +277,8 @@ class R2D2Memory(Memory, ABC):
         self.indices = []
         self.cur_idx = 0
         self.batch_size = batch_size
+        self.rewind = cfg.TMRL_CONFIG["ALG"]["R2D2_REWIND"]
+        assert 0.1 <= self.rewind <= 0.9, "R2D2 REWIND CONST SHOULD BE BETWEEN 0.1 AND 0.9"
 
 
     def collate(self, batch, device):
@@ -321,7 +323,7 @@ class R2D2Memory(Memory, ABC):
 
         if len(self.end_episodes_indices) == 0:
             if self.cur_idx == 0:
-                self.cur_idx += (3 * batch_size) // 4
+                self.cur_idx += int(batch_size * self.rewind)
                 # self.cur_idx += batch_size // 2
                 pom = tuple(range(0, self.cur_idx))
                 print(pom)
@@ -330,7 +332,7 @@ class R2D2Memory(Memory, ABC):
                 if self.cur_idx + batch_size < len(self):
                     pom = tuple(range(self.cur_idx, self.cur_idx + batch_size))
                     # self.cur_idx += batch_size // 2
-                    self.cur_idx += (3 * batch_size) // 4
+                    self.cur_idx += int(batch_size * self.rewind)
                     print(pom)
                     return pom
                 else:
@@ -382,11 +384,12 @@ class R2D2Memory(Memory, ABC):
                     return result
             else:
                 # self.cur_idx -= batch_size // 2
-                self.cur_idx -= (3 * batch_size) // 4
+                self.cur_idx -= int(batch_size * self.rewind)
 
                 if self.cur_idx + batch_size >= self.chosen_episode:  # ostatni batch epizodu
                     # print("ostatni batch")
                     self.isNewEpisode = True
+
                     result = tuple(range(self.chosen_episode - batch_size, self.chosen_episode - 1))
                     # print(result)
                     self.cur_idx = self.chosen_episode
@@ -398,6 +401,27 @@ class R2D2Memory(Memory, ABC):
                     # print(result)
                     self.cur_idx += batch_size
                     return result
+
+                    self.last_index = self.chosen_episode
+
+        while len(indices) < self.batch_size:
+            random_index = random.randint(0, len(self) - 1)
+            indices.append(random_index)
+
+        while len(indices) > self.batch_size:
+            indices.pop()
+
+        if indices is None:
+            raise Exception("Indices cannot be None!")
+        # if len(indices) < self.batch_size - 1:
+        #     raise Exception("Indices cannot be less!")
+
+        indices = tuple(indices)
+
+        return indices
+    # def sample_indices(self):
+    #     return tuple(randint(0, len(self) - 1) for _ in range(self.batch_size))
+
 
     def sample(self):
         indices = self.sample_indices()

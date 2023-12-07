@@ -1,4 +1,5 @@
 import math
+import random
 
 import numpy as np
 import torch
@@ -6,7 +7,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.autograd import Variable
 from torch.distributions import Normal
-from torchrl.modules import NoisyLinear
+from torchrl.modules import NoisyLinear, TanhNormal
 
 import config.config_constants as cfg
 import config.config_objects as cfo
@@ -59,7 +60,11 @@ def init_kaiming(layer):
 class CNNModule(nn.Module):
     def __init__(self, mlp_out_size: int = 256, activation=nn.LeakyReLU, seed: int = cfg.SEED):
         super(CNNModule, self).__init__()
-        self.seed = torch.manual_seed(seed)
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
         self.activation = activation()
         self.conv_groups = 2
@@ -111,7 +116,6 @@ class CNNModule(nn.Module):
         init_kaiming(self.fc1)
 
     def forward(self, x):
-        # TODO: add residual connections
         x /= 255.0
         i = 0
         residual = None
@@ -137,7 +141,11 @@ class QRCNNQFunction(nn.Module):
             activation=nn.ReLU, seed: int = cfg.SEED
     ):
         super().__init__()
-        self.seed = torch.manual_seed(seed)
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
         self.cnn_module = CNNModule()
         self.activation = activation()
@@ -150,7 +158,8 @@ class QRCNNQFunction(nn.Module):
 
         self.mlp1_lvl1 = nn.Linear(dim_obs, mlp_branch_sizes[0])
 
-        self.layernorm_api = nn.LayerNorm(mlp_branch_sizes[0])
+        if cfg.MODEL_CONFIG["API_LAYERNORM"]:
+            self.layernorm_api = nn.LayerNorm(dim_obs)
 
         self.rnn_block_api = lstm(
             mlp_branch_sizes[0],
@@ -164,7 +173,7 @@ class QRCNNQFunction(nn.Module):
             rnn_lens[1]
         )
 
-        if cfo.ALG_CONFIG["NOISY_LINEAR_CRITIC"]:
+        if cfg.NOISY_LINEAR_CRITIC:
             self.model_out = NoisyLinear(
                 rnn_sizes[0],
                 self.num_quantiles,
@@ -173,6 +182,9 @@ class QRCNNQFunction(nn.Module):
             )
         else:
             self.model_out = nn.Linear(rnn_sizes[0], self.num_quantiles)
+
+        if cfg.MODEL_CONFIG["DROPOUT"] > 0.0:
+            self.dropout = nn.Dropout(cfg.MODEL_CONFIG["DROPOUT"])
 
         self.h0 = None
         self.h1 = None
@@ -234,18 +246,23 @@ class QRCNNQFunction(nn.Module):
         obs_seq_cat = torch.cat(observation_except_img, -1)
         obs_seq_cat = obs_seq_cat.view(batch_size, -1).float()
 
+        if cfg.MODEL_CONFIG["API_LAYERNORM"]:
+            obs_seq_cat = self.layernorm_api(obs_seq_cat)
+
         mlp1_lvl1_out = self.activation(self.mlp1_lvl1(obs_seq_cat))
-        layernorm_api_out = self.layernorm_api(mlp1_lvl1_out)
 
         # cat_layer_norm_act_out = torch.cat([layer_norm_api_out, act], dim=-1)
 
-        rnn_block_api_out, (h0, c0) = self.rnn_block_api(layernorm_api_out, (h0, c0))
+        rnn_block_api_out, (h0, c0) = self.rnn_block_api(mlp1_lvl1_out, (h0, c0))
 
         img_api_out = torch.cat([rnn_block_api_out, conv_branch_out, act], dim=-1)
 
         rnn_block_cat_out, (h1, c1) = self.rnn_block_cat(img_api_out, (h1, c1))
 
         model_out = self.model_out(rnn_block_api_out)
+
+        if cfg.DROPOUT:
+            model_out = self.dropout(model_out)
 
         if save_hidden:
             self.h0 = h0
@@ -265,7 +282,11 @@ class SquashedActorQRCNN(TorchActorModule):
         super().__init__(
             observation_space, action_space
         )
-        self.seed = torch.manual_seed(seed)
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
         self.cnn_module = CNNModule()
         self.activation = activation()
@@ -278,7 +299,8 @@ class SquashedActorQRCNN(TorchActorModule):
 
         self.mlp1_lvl1 = nn.Linear(dim_obs, mlp_branch_sizes[0])
 
-        self.layernorm_api = nn.LayerNorm(mlp_branch_sizes[0])
+        if cfg.MODEL_CONFIG["API_LAYERNORM"]:
+            self.layernorm_api = nn.LayerNorm(dim_obs)
 
         self.rnn_block_api = lstm(
             mlp_branch_sizes[0],
@@ -293,7 +315,7 @@ class SquashedActorQRCNN(TorchActorModule):
             dropout=0.1
         )
 
-        if cfo.ALG_CONFIG["NOISY_LINEAR_ACTOR"]:
+        if cfg.NOISY_LINEAR_ACTOR:
             self.model_out = NoisyLinear(
                 rnn_sizes[0],
                 self.num_quantiles,
@@ -302,6 +324,9 @@ class SquashedActorQRCNN(TorchActorModule):
             )
         else:
             self.model_out = nn.Linear(rnn_sizes[0], mlp_out_size)
+
+        if cfg.MODEL_CONFIG["DROPOUT"] > 0.0:
+            self.dropout = nn.Dropout(cfg.MODEL_CONFIG["DROPOUT"])
 
         self.mu_layer = nn.Linear(mlp_out_size, dim_act)
         self.log_std_layer = nn.Linear(mlp_out_size, dim_act)
@@ -369,10 +394,12 @@ class SquashedActorQRCNN(TorchActorModule):
         obs_seq_cat = torch.cat(observation_except_img, -1)
         obs_seq_cat = obs_seq_cat.view(batch_size, -1).float()
 
-        mlp1_lvl1_out = self.activation(self.mlp1_lvl1(obs_seq_cat))
-        layernorm_api_out = self.layernorm_api(mlp1_lvl1_out)
+        if cfg.MODEL_CONFIG["API_LAYERNORM"]:
+            obs_seq_cat = self.layernorm_api(obs_seq_cat)
 
-        rnn_block_api_out, (h0, c0) = self.rnn_block_api(layernorm_api_out, (h0, c0))
+        mlp1_lvl1_out = self.activation(self.mlp1_lvl1(obs_seq_cat))
+
+        rnn_block_api_out, (h0, c0) = self.rnn_block_api(mlp1_lvl1_out, (h0, c0))
 
         img_api_out = torch.cat([rnn_block_api_out, conv_branch_out], dim=-1)
 
@@ -380,13 +407,21 @@ class SquashedActorQRCNN(TorchActorModule):
 
         model_out = self.model_out(rnn_block_api_out)
 
+        if cfg.DROPOUT:
+            model_out = self.dropout(model_out)
+
         mu = self.mu_layer(model_out)
         log_std = self.log_std_layer(model_out)
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         std = torch.exp(log_std)
 
+        # pi_distribution = None
         # Pre-squash distribution and sample
+        # if cfg.PI_DISTRIBUTION == "tanhnormal":
+        #     pi_distribution = TanhNormal(mu, std)
+        # else:
         pi_distribution = Normal(mu, std)
+
         if test:
             # Only used for evaluating policy at test time.
             pi_action = mu
@@ -432,8 +467,11 @@ class QRCNNActorCritic(nn.Module):
             activation=nn.ReLU, seed: int = cfg.SEED
     ):
         super().__init__()
-        self.seed = torch.manual_seed(seed)
-        # act_limit = action_space.high[0]
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
         # build policy and value functions
         self.actor = SquashedActorQRCNN(
