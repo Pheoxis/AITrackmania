@@ -176,8 +176,8 @@ else:
         MEM = MemoryTMFull
 
 MEMORY = partial(MEM,
-                 memory_size=cfg.TMRL_CONFIG["MEMORY_SIZE"],
-                 batch_size=cfg.TMRL_CONFIG["BATCH_SIZE"],
+                 memory_size=cfg.TMRL_CONFIG["MODEL"]["MEMORY_SIZE"],
+                 batch_size=cfg.TMRL_CONFIG["MODEL"]["BATCH_SIZE"],
                  sample_preprocessor=SAMPLE_PREPROCESSOR,
                  dataset_path=cfg.DATASET_PATH,
                  imgs_obs=cfg.IMG_HIST_LEN,
@@ -269,16 +269,16 @@ else:  # images
         TorchTrainingOffline,
         env_cls=ENV_CLS,
         memory_cls=MEMORY,
-        epochs=cfg.TMRL_CONFIG["MAX_EPOCHS"],
-        rounds=cfg.TMRL_CONFIG["ROUNDS_PER_EPOCH"],
-        steps=cfg.TMRL_CONFIG["TRAINING_STEPS_PER_ROUND"],
-        update_model_interval=cfg.TMRL_CONFIG["UPDATE_MODEL_INTERVAL"],
-        update_buffer_interval=cfg.TMRL_CONFIG["UPDATE_BUFFER_INTERVAL"],
-        max_training_steps_per_env_step=cfg.TMRL_CONFIG["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"],
+        epochs=cfg.TMRL_CONFIG["MODEL"]["MAX_EPOCHS"],
+        rounds=cfg.TMRL_CONFIG["MODEL"]["ROUNDS_PER_EPOCH"],
+        steps=cfg.TMRL_CONFIG["MODEL"]["TRAINING_STEPS_PER_ROUND"],
+        update_model_interval=cfg.TMRL_CONFIG["MODEL"]["UPDATE_MODEL_INTERVAL"],
+        update_buffer_interval=cfg.TMRL_CONFIG["MODEL"]["UPDATE_BUFFER_INTERVAL"],
+        max_training_steps_per_env_step=cfg.TMRL_CONFIG["MODEL"]["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"],
         profiling=cfg.PROFILE_TRAINER,
         training_agent_cls=AGENT,
         agent_scheduler=None,  # sac_v2_entropy_scheduler
-        start_training=cfg.TMRL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"])
+        start_training=cfg.TMRL_CONFIG["MODEL"]["ENVIRONMENT_STEPS_BEFORE_TRAINING"])
 
 # CHECKPOINTS: ===================================================
 
