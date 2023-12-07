@@ -5,6 +5,7 @@ import numpy as np
 from gymnasium import spaces
 
 from custom.interfaces.TM2020Interface import TM2020Interface
+from custom.utils.compute_reward import RewardFunction
 from custom.utils.control_mouse import mouse_save_replay_tm20
 
 import config.config_constants as cfg
@@ -62,7 +63,7 @@ class TM2020InterfaceIMPALA(TM2020Interface):
 
         failure_counter = spaces.Box(low=0.0, high=15, shape=(1,))
 
-        next_checkpoints = spaces.Box(low=-100.0, high=100.0, shape=(2 * cfg.POINTS_NUMBER,))
+        next_checkpoints = spaces.Box(low=-100.0, high=100.0, shape=(4, ))
 
         if self.resize_to is not None:
             w, h = self.resize_to
@@ -152,7 +153,7 @@ class TM2020InterfaceIMPALA(TM2020Interface):
 
         race_progress = self.reward_function.compute_race_progress()
 
-        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, cfg.POINTS_NUMBER)
+        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, self.reward_function.n)
 
         end_of_track = bool(data[9])
 
@@ -230,7 +231,7 @@ class TM2020InterfaceIMPALA(TM2020Interface):
         failure_counter = np.array([0.0])
         race_progress = 0.0
 
-        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, cfg.POINTS_NUMBER)
+        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, self.reward_function.n)
 
         for _ in range(self.img_hist_len):
             self.img_hist.append(img)

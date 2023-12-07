@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import wandb
 from torch.optim import Adam
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 # local imports
 from custom.models import MLPActorCritic, REDQMLPActorCritic
@@ -308,7 +309,7 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
         # Entropy-regularized policy loss
         loss_actor = (alpha_t * logp_pi - q_pi).mean()
 
-        self.pi_optimizer.zero_grad() # actor
+        self.pi_optimizer.zero_grad()  # actor
         loss_actor.backward()
         self.pi_optimizer.step()
 
@@ -461,6 +462,23 @@ class TQCAgent(TrainingAgent):
         self.critic_optimizer = Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()),
                                      lr=self.lr_critic, weight_decay=0.005)
 
+        if len(cfg.SCHEDULER_CONFIG["NAME"]) > 0:
+            self.actor_scheduler = CosineAnnealingWarmRestarts(
+                self.actor_optimizer,
+                cfg.SCHEDULER_CONFIG["T_0"],
+                cfg.SCHEDULER_CONFIG["T_mult"],
+                cfg.SCHEDULER_CONFIG["eta_min"],
+                cfg.SCHEDULER_CONFIG["last_epoch"]
+            )
+
+            self.critic_scheduler = CosineAnnealingWarmRestarts(
+                self.critic_optimizer,
+                cfg.SCHEDULER_CONFIG["T_0"],
+                cfg.SCHEDULER_CONFIG["T_mult"],
+                cfg.SCHEDULER_CONFIG["eta_min"],
+                cfg.SCHEDULER_CONFIG["last_epoch"]
+            )
+
         self.quantiles_total = self.model.q1.num_quantiles + self.model.q2.num_quantiles
 
         if self.target_entropy is None:
@@ -521,7 +539,7 @@ class TQCAgent(TrainingAgent):
         for param in model.parameters():
             param.data.clamp_(-max_value, max_value)
 
-    def train(self, batch):
+    def train(self, epoch, batch, batch_index, iters):
         o, a, r, o2, d, _ = batch
 
         batch_size = r.shape[0]
@@ -557,7 +575,7 @@ class TQCAgent(TrainingAgent):
             next_q2 = self.model_target.q2(o2, new_next_action)  # Tensor(batch x quantiles)
             next_z = torch.stack((next_q1, next_q2), dim=1)  # Tensor(batch x nets x quantiles)
             sorted_z, _ = torch.sort(next_z.reshape(batch_size, -1))  # Tensor(batch x [nets * quantiles])
-            sorted_z_part = sorted_z[:,:self.quantiles_total - self.top_quantiles_to_drop]
+            sorted_z_part = sorted_z[:, :self.quantiles_total - self.top_quantiles_to_drop]
             target_quantiles = sorted_z_part - alpha_t * next_log_pi.reshape(-1, 1)
             not_done = 1 - d
             tmp = target_quantiles * not_done[:, None]
@@ -571,6 +589,7 @@ class TQCAgent(TrainingAgent):
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
+        self.critic_scheduler.step(epoch + batch_index / iters)  # TODO: idk czy dobrze
 
         new_action, log_pi = self.get_actor()(o)
         q1_pi = self.model.q1(o, new_action)
@@ -581,13 +600,14 @@ class TQCAgent(TrainingAgent):
         self.model.q1.requires_grad_(False)
         self.model.q2.requires_grad_(False)
 
-        self.clip_weights(self.model.q1)
-        self.clip_weights(self.model.q2)
+        # self.clip_weights(self.model.q1)
+        # self.clip_weights(self.model.q2)
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
-        self.clip_weights(self.model.actor)
+        self.actor_scheduler.step(epoch + batch_index / iters)  # TODO: idk czy dobrze
+        # self.clip_weights(self.model.actor)
 
         self.model.q1.requires_grad_(True)
         self.model.q2.requires_grad_(True)
@@ -602,6 +622,8 @@ class TQCAgent(TrainingAgent):
         ret_dict = {
             "loss_actor": actor_loss.detach().item(),
             "loss_critic": critic_loss.detach().item(),  # or any other relevant critic loss
+            "actor_lr": self.actor_optimizer.param_groups[0]['lr'],
+            "critic_lr": self.critic_optimizer.param_groups[0]['lr']
         }
 
         if self.learn_entropy_coef:
@@ -633,6 +655,10 @@ class IQNAgent(TrainingAgent):
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
     def __post_init__(self):
+        self.pis = torch.FloatTensor(
+            [np.pi * i for i in range(self.quantile_embedding_size)]
+        ).view(1, 1, self.quantile_embedding_size).to(self.device)
+
         observation_space, action_space = self.observation_space, self.action_space
         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
         model = self.model_cls(observation_space, action_space)
@@ -678,6 +704,16 @@ class IQNAgent(TrainingAgent):
         for param in model.parameters():
             param.data.clamp_(-max_value, max_value)
 
+    def calc_cos(self, batch_size, n_tau=quantile_embedding_size):
+        """
+        Calculating the cosinus values depending on the number of tau samples
+        """
+        taus = torch.rand(batch_size, n_tau).to(self.device).unsqueeze(-1)  # (batch_size, n_tau, 1)
+        cos = torch.cos(taus * self.pis)
+
+        assert cos.shape == (batch_size, n_tau, self.quantile_embedding_size), "cos shape is incorrect"
+        return cos, taus
+
     def soft_update(self, local_model, target_model):
         """Soft update model parameters.
         θ_target = τ*θ_local + (1 - τ)*θ_target
@@ -719,7 +755,6 @@ class IQNAgent(TrainingAgent):
 
         q1 = self.model.q1(o, a)
         q2 = self.model.q2(o, a)
-
 
         # Get max predicted Q values (for next states) from target model
         Q_targets_next, _ = self.qnetwork_target(o2)

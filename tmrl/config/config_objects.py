@@ -38,6 +38,9 @@ from util import partial
 
 ALG_CONFIG = cfg.TMRL_CONFIG["ALG"]
 ALG_NAME = ALG_CONFIG["ALGORITHM"]
+
+MODEL_CONFIG = cfg.TMRL_CONFIG["MODEL"]
+
 assert ALG_NAME in ["SAC", "REDQSAC",
                     "TQC"], f"If you wish to implement {ALG_NAME}, do not use 'ALG' in config.json for that."
 
@@ -93,7 +96,7 @@ else:
             grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
             crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
             checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
-            min_nb_steps_before_failure=140
+            min_nb_steps_before_failure=cfg.MIN_NB_STEPS_BEFORE_FAILURE
         )
         # INT = partial(
         #     TM2020InterfaceTQCmini, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
@@ -174,8 +177,8 @@ else:
         MEM = MemoryTMFull
 
 MEMORY = partial(MEM,
-                 memory_size=cfg.TMRL_CONFIG["MEMORY_SIZE"],
-                 batch_size=cfg.TMRL_CONFIG["BATCH_SIZE"],
+                 memory_size=MODEL_CONFIG["MEMORY_SIZE"],
+                 batch_size=MODEL_CONFIG["BATCH_SIZE"],
                  sample_preprocessor=SAMPLE_PREPROCESSOR,
                  dataset_path=cfg.DATASET_PATH,
                  imgs_obs=cfg.IMG_HIST_LEN,
@@ -251,32 +254,32 @@ if cfg.PRAGMA_LIDAR:  # lidar
         TorchTrainingOffline,
         env_cls=ENV_CLS,
         memory_cls=MEMORY,
-        epochs=cfg.TMRL_CONFIG["MAX_EPOCHS"],
-        rounds=cfg.TMRL_CONFIG["ROUNDS_PER_EPOCH"],
-        steps=cfg.TMRL_CONFIG["TRAINING_STEPS_PER_ROUND"],
-        update_model_interval=cfg.TMRL_CONFIG["UPDATE_MODEL_INTERVAL"],
-        update_buffer_interval=cfg.TMRL_CONFIG["UPDATE_BUFFER_INTERVAL"],
-        max_training_steps_per_env_step=cfg.TMRL_CONFIG["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"],
+        epochs=MODEL_CONFIG["MAX_EPOCHS"],
+        rounds=MODEL_CONFIG["ROUNDS_PER_EPOCH"],
+        steps=MODEL_CONFIG["TRAINING_STEPS_PER_ROUND"],
+        update_model_interval=MODEL_CONFIG["UPDATE_MODEL_INTERVAL"],
+        update_buffer_interval=MODEL_CONFIG["UPDATE_BUFFER_INTERVAL"],
+        max_training_steps_per_env_step=MODEL_CONFIG["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"],
         profiling=cfg.PROFILE_TRAINER,
         training_agent_cls=AGENT,
         agent_scheduler=None,  # sac_v2_entropy_scheduler
-        start_training=cfg.TMRL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"])  # set this > 0 to start from an existing
+        start_training=MODEL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"])  # set this > 0 to start from an existing
     # policy (fills the buffer up to this number of samples before starting training)
 else:  # images
     TRAINER = partial(
         TorchTrainingOffline,
         env_cls=ENV_CLS,
         memory_cls=MEMORY,
-        epochs=cfg.TMRL_CONFIG["MAX_EPOCHS"],
-        rounds=cfg.TMRL_CONFIG["ROUNDS_PER_EPOCH"],
-        steps=cfg.TMRL_CONFIG["TRAINING_STEPS_PER_ROUND"],
-        update_model_interval=cfg.TMRL_CONFIG["UPDATE_MODEL_INTERVAL"],
-        update_buffer_interval=cfg.TMRL_CONFIG["UPDATE_BUFFER_INTERVAL"],
-        max_training_steps_per_env_step=cfg.TMRL_CONFIG["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"],
+        epochs=MODEL_CONFIG["MAX_EPOCHS"],
+        rounds=MODEL_CONFIG["ROUNDS_PER_EPOCH"],
+        steps=MODEL_CONFIG["TRAINING_STEPS_PER_ROUND"],
+        update_model_interval=MODEL_CONFIG["UPDATE_MODEL_INTERVAL"],
+        update_buffer_interval=MODEL_CONFIG["UPDATE_BUFFER_INTERVAL"],
+        max_training_steps_per_env_step=MODEL_CONFIG["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"],
         profiling=cfg.PROFILE_TRAINER,
         training_agent_cls=AGENT,
         agent_scheduler=None,  # sac_v2_entropy_scheduler
-        start_training=cfg.TMRL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"])
+        start_training=MODEL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"])
 
 # CHECKPOINTS: ===================================================
 

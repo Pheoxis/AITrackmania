@@ -9,7 +9,6 @@ from rtgym import RealTimeGymInterface
 import config.config_constants as cfg
 import platform
 
-from custom.interfaces.interface_constants import NB_OBS_FORWARD
 from custom.utils.compute_reward import RewardFunction
 from custom.utils.control_gamepad import control_gamepad, gamepad_reset, gamepad_close_finish_pop_up_tm20
 from custom.utils.control_keyboard import keyres, apply_control
@@ -82,7 +81,7 @@ class TM2020Interface(RealTimeGymInterface):
         self.img_hist = deque(maxlen=self.img_hist_len)
         self.img = None
         self.reward_function = RewardFunction(reward_data_path=cfg.REWARD_PATH,
-                                              nb_obs_forward=NB_OBS_FORWARD,
+                                              nb_obs_forward=cfg.NB_OBS_FORWARD,
                                               nb_obs_backward=15,
                                               nb_zero_rew_before_failure=10,
                                               min_nb_steps_before_failure=self.min_nb_steps_before_failure,

@@ -73,8 +73,7 @@ class RewardFunction:
         self.new_lap = False
         self.near_finish = False
         self.new_checkpoint = False
-        self.reward_sum = 0.0
-        self.isFinished = False
+        self.episode_reward = 0.0
         self.reward_sum_list = []
         self.low_threshold = low_threshold
         self.high_threshold = high_threshold
@@ -84,8 +83,14 @@ class RewardFunction:
         self.cooldown = self.window_size // 4
         self.change_cooldown = self.cooldown
         self.average_distance = self.calculate_average_distance()
-        # self.n = max(int(0.08 / self.average_distance), 1)  # TODO: find optimal value
-        self.n = max(1, min(len(self.data), int(0.75 / max(self.average_distance, 0.01)))) # intervals of ~0.75m
+        self.n = max(1, min(len(self.data), int(0.75 / max(self.average_distance, 0.01))))  # intervals of ~0.75m
+        self.i = 0
+        self.min_value = cfg.MIN_NB_STEPS_BEFORE_FAILURE
+        self.max_value = cfg.MAX_NB_STEPS_BEFORE_FAILURE
+        self.mid_value = (self.max_value + self.min_value) / 2
+        self.amplitude = (self.max_value - self.min_value) / 2
+        self.oscillation_period = cfg.OSCILLATION_PERIOD  # oscillate every 50 iterations
+        self.index_divider = 4 * self.n
         print(f"n: {self.n}")
 
         if cfg.WANDB_DEBUG_REWARD:
@@ -97,7 +102,13 @@ class RewardFunction:
         err_cpt = 0
         while not wandb_initialized:
             try:
-                wandb.init(project=cfg.WANDB_PROJECT, entity=cfg.WANDB_ENTITY, id=cfg.WANDB_RUN_ID + "_rewards")
+                wandb.init(
+                    project=cfg.WANDB_PROJECT,
+                    entity=cfg.WANDB_ENTITY,
+                    id=cfg.WANDB_RUN_ID + " WORKER",
+                    config=cfg.create_config(),
+                    job_type="worker"
+                )
                 wandb_initialized = True
             except Exception as e:
                 err_cpt += 1
@@ -107,10 +118,10 @@ class RewardFunction:
                     exit()
                 else:
                     time.sleep(10.0)
-        # self.tmp_counter = 0
-        # self.traj = []
 
-    def get_n_next_checkpoints_xy(self, pos, number_of_next_points: int = cfg.POINTS_NUMBER):
+        self.i = 0
+
+    def get_n_next_checkpoints_xy(self, pos, number_of_next_points: int):
         next_indices = [self.cur_idx + i * self.n for i in range(1, number_of_next_points + 1)]
         for i in range(len(next_indices)):
             if next_indices[i] >= len(self.data):
@@ -151,7 +162,7 @@ class RewardFunction:
             # stop condition
             if index >= self.datalen or temp <= 0:
                 break
-        reward = (best_index - self.cur_idx) / 22.
+        reward = (best_index - self.cur_idx) / self.index_divider
         if best_index == self.cur_idx:  # if the best index didn't change, we rewind (more Markovian reward)
             min_dist = np.inf
             index = self.cur_idx
@@ -214,11 +225,12 @@ class RewardFunction:
             self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
             self.new_checkpoint = False
 
-        if speed <= 0:
-            reward -= 1/(1 + np.exp(-0.1 * speed - 3)) - 1
+        if speed < -0.5:
+            penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
+            reward += penalty
 
         if crashed:
-            reward -= round(abs(self.crash_penalty) * math.sqrt(self.crash_counter), 4)
+            reward -= round(abs(self.crash_penalty) * self.crash_counter ** (1. / 3), 4)
             self.crash_counter += 1
 
         if reward != 0.0:
@@ -230,15 +242,17 @@ class RewardFunction:
         if cfg.WANDB_DEBUG_REWARD:
             self.send_reward.append(reward)
 
-        self.reward_sum += reward
+        self.episode_reward += reward
         if terminated:
             # self.counter += 1
-            print(f"Total reward of the run: {self.reward_sum}")
-            self.isFinished = False
-            if self.reward_sum != 0.0:
-                self.reward_sum_list.append(self.reward_sum)
-                wandb.log({"Run reward": self.reward_sum})
-                self.change_min_nb_steps_before_failure()
+            print(f"Total reward of the run: {self.episode_reward}")
+            if self.episode_reward != 0.0:
+                self.reward_sum_list.append(self.episode_reward)
+                # wandb.log({"Run reward": self.reward_sum})
+                # self.change_min_nb_steps_before_failure()
+                self.i = self.i + 1
+                self.min_nb_steps_before_failure = int(self.mid_value + self.amplitude * np.cos(2 * np.pi * self.i / self.oscillation_period))
+                print(f"min_nb_steps_before_failure: {self.min_nb_steps_before_failure}")
                 if cfg.WANDB_DEBUG_REWARD:
                     send_reward_df = pd.DataFrame({"Reward": self.send_reward})
                     summary_stats = send_reward_df.describe()
@@ -255,7 +269,7 @@ class RewardFunction:
 
                     wandb.log(
                         {
-                            "Run reward": self.reward_sum,
+                            "Run reward": self.episode_reward,
                             "Q1": q1_value, "Q2": q2_value, "Q3": q3_value, "mean": mean_value,
                             "max": max_value, "min": min_value,
                             "count": count_value, "std": std_value
@@ -263,9 +277,9 @@ class RewardFunction:
                     )
                     self.send_reward.clear()
                 else:
-                    wandb.log({"Run reward": self.reward_sum})
+                    wandb.log({"Run reward": self.episode_reward})
 
-        return reward, terminated, self.failure_counter, self.reward_sum
+        return reward, terminated, self.failure_counter, self.episode_reward
 
     def compute_race_progress(self):
         return self.cur_idx / len(self.data)
@@ -285,7 +299,7 @@ class RewardFunction:
         return model.coef_[0][0]
 
     def change_min_nb_steps_before_failure(self):
-        if len(self.reward_sum_list) <= self.window_size * 2 or len(self.send_reward) > 100:
+        if len(self.reward_sum_list) <= self.window_size * 2 or abs(self.episode_reward) < 1:
             return
         if self.change_cooldown <= 0:
             ema_values = self.calculate_ema()
@@ -296,7 +310,7 @@ class RewardFunction:
                 if self.min_nb_steps_before_failure <= 270:
                     self.min_nb_steps_before_failure += 2
             elif corr >= 0.095:
-                if self.min_nb_steps_before_failure >= 96:
+                if self.min_nb_steps_before_failure >= 108:
                     self.min_nb_steps_before_failure -= 8
             self.change_cooldown = self.cooldown
         else:
@@ -312,7 +326,8 @@ class RewardFunction:
         self.prev_idx = 0
         self.step_counter = 0
         self.failure_counter = 0
-        self.reward_sum = 0.0
+        self.episode_reward = 0.0
         self.crash_counter = 1
         self.lap_cur_cooldown = cfg.LAP_COOLDOWN
         self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
+        self.i = 0

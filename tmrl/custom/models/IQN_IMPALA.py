@@ -141,10 +141,15 @@ class QRCNNQFunction(nn.Module):
         self.activation = activation()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+        self.pis = torch.FloatTensor(
+            [np.pi * i for i in range(self.n_cos)]
+        ).view(1, 1, self.n_cos).to(self.device)
+
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
         dim_obs -= math.prod(s for s in observation_space[-3].shape)
         dim_act = action_space.shape[0]
-        self.num_quantiles = cfo.ALG_CONFIG["QUANTILES_NUMBER"]
+        self.num_quantiles = cfo.ALG_CONFIG["QUANTILES_NUMBER"]  # num_tau
+        self.quantile_embedding_size = cfo.ALG_CONFIG["QUANTILE_EMBEDDING_SIZE"]  # n_cos
 
         self.mlp1_lvl1 = nn.Linear(dim_obs, mlp_branch_sizes[0])
 
@@ -181,14 +186,14 @@ class QRCNNQFunction(nn.Module):
         # self.rnn_sizes[-1] += dim_act
         self.img_index = -3
 
-    def calc_cos(self, batch_size, n_tau=8):
+    def calc_cos(self, batch_size):
         """
         Calculating the cosinus values depending on the number of tau samples
         """
-        taus = torch.rand(batch_size, n_tau).to(self.device).unsqueeze(-1)  # (batch_size, n_tau, 1)
+        taus = torch.rand(batch_size, self.num_quantiles).to(self.device).unsqueeze(-1)  # (batch_size, n_tau, 1)
         cos = torch.cos(taus * self.pis)
 
-        assert cos.shape == (batch_size, n_tau, self.n_cos), "cos shape is incorrect"
+        assert cos.shape == (batch_size, self.num_quantiles, self.quantile_embedding_size), "cos shape is incorrect"
         return cos, taus
 
     def forward(self, observation, act, save_hidden=False):
@@ -196,6 +201,10 @@ class QRCNNQFunction(nn.Module):
         self.rnn_block_cat.flatten_parameters()
 
         batch_size = observation[0].shape[0]
+        cos, taus = self.calc_cos(batch_size)
+        cos = cos.view(batch_size * self.num_quantiles, self.quantile_embedding_size)
+        # cos_x = torch.relu(self.)
+
         if type(observation) is tuple:
             observation = list(observation)
 
@@ -278,6 +287,10 @@ class SquashedActorQRCNN(TorchActorModule):
         self.activation = activation()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+        self.pis = torch.FloatTensor(
+            [np.pi * i for i in range(self.quantile_embedding_size)]
+        ).view(1, 1, self.n_cos).to(self.device)
+
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
         dim_obs -= math.prod(s for s in observation_space[-3].shape)
         dim_act = action_space.shape[0]
@@ -322,6 +335,16 @@ class SquashedActorQRCNN(TorchActorModule):
         self.rnn_sizes = list(rnn_sizes)
         self.rnn_lens = list(rnn_lens)
         self.img_index = -3
+
+    def calc_cos(self, batch_size, n_tau=8):
+        """
+        Calculating the cosinus values depending on the number of tau samples
+        """
+        taus = torch.rand(batch_size, n_tau).to(self.device).unsqueeze(-1)  # (batch_size, n_tau, 1)
+        cos = torch.cos(taus * self.pis)
+
+        assert cos.shape == (batch_size, n_tau, self.n_cos), "cos shape is incorrect"
+        return cos, taus
 
     def forward(self, observation, test=False, with_logprob=True, save_hidden=False):
         self.rnn_block_api.flatten_parameters()
