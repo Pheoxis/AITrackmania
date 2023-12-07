@@ -12,7 +12,6 @@ from os.path import exists
 
 # third-party imports
 import numpy as np
-import wandb
 from requests import get
 from tlspyo import Relay, Endpoint
 
@@ -309,7 +308,15 @@ def run_with_wandb(entity, project, run_id, interface, run_cls, checkpoint_path:
     err_cpt = 0
     while not wandb_initialized:
         try:
-            wandb.init(dir=wandb_dir, entity=entity, project=project, id=run_id, resume=resume, config=config)
+            wandb.init(
+                dir=wandb_dir,
+                entity=entity,
+                project=project,
+                id=run_id + " TRAINER",
+                resume=resume,
+                config=config.update(cfg.create_config()),
+                job_type="trainer"
+            )
             wandb_initialized = True
 
         except Exception as e:
@@ -320,31 +327,13 @@ def run_with_wandb(entity, project, run_id, interface, run_cls, checkpoint_path:
                 exit()
             else:
                 time.sleep(10.0)
-    # wandb.save(run_cls()) save model to wandb to visualise it
 
     for stats in iterate_epochs_tm(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, 1,
                                    updater_fn):
         tmp = []
         for s in stats:
             metrics = json.loads(s.to_json())
-            # metrics["combined_metrics"] = metrics["loss_critic"] + metrics["loss_actor"] + metrics[
-            #     'loss_entropy_coef'] / 10000.0
             tmp.append(wandb.log(metrics))
-    # wandb.agent(sweep_id=sweep_id, project=project+"_Sweeps", entity=entity, count=10,
-    #             function=train(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, updater_fn))
-    # logging.info(config)
-
-
-# def train(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, updater_fn):
-#     for stats in iterate_epochs_tm(run_cls, interface, checkpoint_path, dump_run_instance_fn, load_run_instance_fn, 1,
-#                                    updater_fn):
-#         tmp = []
-#         for s in stats:
-#             metrics = json.loads(s.to_json())
-#             metrics["combined_metrics"] = metrics["loss_critic"] + metrics["loss_actor"] + metrics[
-#                 'loss_entropy_coef'] / 10000.0
-#             tmp.append(wandb.log(metrics))
-#         print(tmp)
 
 
 def run(interface, run_cls, checkpoint_path: str = None, dump_run_instance_fn=None, load_run_instance_fn=None,
@@ -562,9 +551,6 @@ class RolloutWorker:
         else:
             self.__endpoint = None
 
-        self.round_reward = 0.0
-        self.highest_reward = 0.0
-
     def act(self, obs, test=False):
         """
         Select an action based on observation `obs`
@@ -637,8 +623,6 @@ class RolloutWorker:
         act = self.act(obs, test=test)
         new_obs, rew, terminated, truncated, info = self.env.step(act)
 
-        self.round_reward += rew
-
         if self.obs_preprocessor is not None:
             new_obs = self.obs_preprocessor(new_obs)
         if collect_samples:
@@ -652,13 +636,6 @@ class RolloutWorker:
                 sample = act, new_obs, rew, terminated, truncated, info
             self.buffer.append_sample(
                 sample)  # CAUTION: in the buffer, act is for the PREVIOUS transition (act, obs(act))
-        # if reward_function is not None:
-        #     if terminated or truncated:
-        #         print(f"round reward: {self.round_reward}")
-        #         if self.highest_reward < self.round_reward:
-        #             self.highest_reward = self.round_reward
-        #             reward_function.min_nb_steps_before_failure = int(ceil(reward_function.min_nb_steps_before_failure * 1.1))
-        #         self.round_reward = 0.0
         return new_obs, rew, terminated, truncated, info
 
     def collect_train_episode(self, max_samples):
@@ -795,3 +772,195 @@ class RolloutWorker:
                     print_with_timestamp("model weights saved in history")
             self.actor = self.actor.load(self.model_path, device=self.device)
             print_with_timestamp("model weights have been updated")
+
+
+# === Human Worker =============
+
+
+class HumanWorker:
+    def __init__(
+            self,
+            env_cls,
+            sample_compressor: callable = None,
+            device="cpu",
+            max_samples_per_episode=np.inf,
+            obs_preprocessor: callable = None,
+            crc_debug=False,
+            model_history=cfg.MODEL_HISTORY,
+            standalone=False,
+            server_ip=None,
+            server_port=cfg.PORT,
+            password=cfg.PASSWORD,
+            local_port=cfg.LOCAL_PORT_WORKER,
+            header_size=cfg.HEADER_SIZE,
+            max_buf_len=cfg.BUFFER_SIZE,
+            security=cfg.SECURITY,
+            keys_dir=cfg.CREDENTIALS_DIRECTORY,
+            hostname=cfg.HOSTNAME
+    ):
+        """
+        Args:
+            env_cls (type): class of the Gymnasium environment (subclass of tmrl.envs.GenericGymEnv)
+            actor_module_cls (type): class of the module containing the policy (subclass of tmrl.actor.ActorModule)
+            sample_compressor (callable): compressor for sending samples over the Internet; \
+            when not `None`, `sample_compressor` must be a function that takes the following arguments: \
+            (prev_act, obs, rew, terminated, truncated, info), and that returns them (modified) in the same order: \
+            when not `None`, a `sample_compressor` works with a corresponding decompression scheme in the `Memory` class
+            device (str): device on which the policy is running
+            max_samples_per_episode (int): if an episode gets longer than this, it is reset
+            model_path (str): path where a local copy of the policy will be stored
+            obs_preprocessor (callable): utility for modifying observations retrieved from the environment; \
+            when not `None`, `obs_preprocessor` must be a function that takes an observation as input and outputs the \
+            modified observation
+            crc_debug (bool): useful for debugging custom pipelines; leave to False otherwise
+            model_path_history (str): (include the filename but omit .tmod) path to the saved history of policies; \
+            we recommend you leave this to the default
+            model_history (int): policies are saved every `model_history` new policies (0: not saved)
+            standalone (bool): if True, the worker will not try to connect to a server
+            server_ip (str): ip of the central server
+            server_port (int): public port of the central server
+            password (str): tlspyo password
+            local_port (int): tlspyo local communication port; usually, leave this to the default
+            header_size (int): tlspyo header size (bytes)
+            max_buf_len (int): tlspyo max number of messages in buffer
+            security (str): tlspyo security type (None or "TLS")
+            keys_dir (str): tlspyo credentials directory; usually, leave this to the default
+            hostname (str): tlspyo hostname; usually, leave this to the default
+        """
+        self.obs_preprocessor = obs_preprocessor
+        self.get_local_buffer_sample = sample_compressor
+        self.env = env_cls()
+        self.device = device
+        self.standalone = standalone
+        self.buffer = Buffer()
+        self.max_samples_per_episode = max_samples_per_episode
+        self.crc_debug = crc_debug
+        self.model_history = model_history
+        self._cur_hist_cpt = 0
+        self.start_time = time.time()
+        self.server_ip = server_ip if server_ip is not None else '127.0.0.1'
+        self.env.j = None
+
+        print_with_timestamp(f"server IP: {self.server_ip}")
+
+        if not self.standalone:
+            self.__endpoint = Endpoint(ip_server=self.server_ip,
+                                       port=server_port,
+                                       password=password,
+                                       groups="workers",
+                                       local_com_port=local_port,
+                                       header_size=header_size,
+                                       max_buf_len=max_buf_len,
+                                       security=security,
+                                       keys_dir=keys_dir,
+                                       hostname=hostname,
+                                       deserializer_mode="synchronous")
+        else:
+            self.__endpoint = None
+
+    def reset(self, controller, collect_samples: bool = True):
+        """
+        Starts a new episode.
+
+        Args:
+            controller:
+            collect_samples (bool): if True, samples are buffered and sent to the `Server`
+
+        Returns:
+            Tuple:
+            (nested structure: observation retrieved from the environment,
+            dict: information retrieved from the environment)
+        """
+        obs = None
+        act = controller.get_actions()
+        options = dict()
+        options['pad'] = True
+        new_obs, info = self.env.reset(options=options)
+        # if self.obs_preprocessor is not None:
+        #     new_obs = self.obs_preprocessor(new_obs)
+        rew = 0.0
+        terminated, truncated = False, False
+        if collect_samples:
+            if self.crc_debug:
+                info['crc_sample'] = (obs, act, new_obs, rew, terminated, truncated)
+            if self.get_local_buffer_sample:
+                sample = self.get_local_buffer_sample(act, new_obs, rew, terminated, truncated, info)
+            else:
+                sample = act, new_obs, rew, terminated, truncated, info
+            self.buffer.append_sample(sample)
+        return new_obs, info, terminated, truncated
+
+    def send_training_sample(self, act, obs, rew, terminated, truncated, info):
+        sample = act, obs, rew, terminated, truncated, info
+        self.buffer.append_sample(sample)
+
+    def collect_train_episode(self, controller):
+        ret = 0.0
+        steps = 0
+        obs, info, terminated, truncated = self.reset(collect_samples=False, controller=controller)
+        while not terminated:
+            act = controller.get_actions()
+            obs, rew, terminated, truncated, info = self.env.step_without_act(act)
+            self.send_training_sample(act, obs, rew, terminated, truncated, info)
+            ret += rew
+            steps += 1
+            print(f"terminated: {terminated}")
+            print(f"rew: {rew}")
+        print(f"ret: {ret}")
+        print(f"steps: {steps}")
+        self.buffer.stat_train_return = ret
+        self.buffer.stat_train_steps = steps
+
+    def run(self, controller, nb_episodes=np.inf):
+        episode = 0
+        while episode < nb_episodes:
+            print_with_timestamp("collecting train episode")
+            self.collect_train_episode(controller)
+            print_with_timestamp("copying buffer for sending")
+            self.send_and_clear_buffer()
+            episode += 1
+
+    def send_and_clear_buffer(self):
+        """
+        Sends the buffered samples to the `Server`.
+        """
+        self.__endpoint.produce(self.buffer, "trainers")
+        self.buffer.clear()
+
+    # def run_episodes(self, max_samples_per_episode, nb_episodes=np.inf, train=False):
+    #     """
+    #     Runs `nb_episodes` episodes.
+    #
+    #     Args:
+    #         max_samples_per_episode (int): same as run_episode
+    #         nb_episodes (int): total number of episodes to collect
+    #         train (bool): same as run_episode
+    #     """
+    #     counter = 0
+    #     while counter < nb_episodes:
+    #         self.run_episode(max_samples_per_episode, train=train)
+    #         counter += 1
+    #
+    # def run_episode(self, controller):
+    #     """
+    #     Collects a maximum of `max_samples` test transitions (from reset to terminated or truncated).
+    #
+    #     Args:
+    #         max_samples (int): At most `max_samples` samples are collected per episode.
+    #             If the episode is longer, it is forcefully reset and `truncated` is set to True.
+    #         train (bool): whether the episode is a training or a test episode.
+    #             `step` is called with `test=not train`.
+    #     """
+    #     ret = 0.0
+    #     steps = 0
+    #     obs, info = self.reset(collect_samples=False)
+    #     while True:
+    #         act = controller.get_actions()
+    #         obs, rew, terminated, truncated, info = self.env.step_without_act(act)
+    #         self.send_training_sample(act, obs, rew, terminated, truncated, info)
+    #         ret += rew
+    #         steps += 1
+    #         if terminated or truncated:
+    #             break
+    #     self.buffer.stat_test_return = ret
+    #     self.buffer.stat_test_steps = steps

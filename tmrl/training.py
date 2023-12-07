@@ -22,11 +22,14 @@ class TrainingAgent(ABC):
         self.device = device
 
     @abstractmethod
-    def train(self, batch):
+    def train(self, epoch, batch, batch_index, iters):
         """
         Executes a training step.
 
         Args:
+            epoch:
+            iters:
+            batch_index:
             batch: tuple or batched tensors (previous observation, action, reward, new observation, terminated, truncated)
 
         Returns:

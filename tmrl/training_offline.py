@@ -140,7 +140,7 @@ class TrainingOffline:
 
                 if batch_index in batch_index_checkpoints:
                     logging.info(f"batch {batch_index} out of {self.steps} has finished")
-                stats_training_dict = self.agent.train(batch)
+                stats_training_dict = self.agent.train(self.epoch, batch, batch_index, len(self.memory))
 
                 t_train = time.time()
 
@@ -181,6 +181,8 @@ class TrainingOffline:
             print(f"reward_sums: {self.memory.reward_sums}")
 
         self.epoch += 1
+        # self.agent.pi_scheduler.step()
+        # self.agent.q_scheduler.step()
         return stats
 
 

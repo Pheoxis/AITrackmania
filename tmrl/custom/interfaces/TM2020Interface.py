@@ -9,7 +9,6 @@ from rtgym import RealTimeGymInterface
 import config.config_constants as cfg
 import platform
 
-from custom.interfaces.interface_constants import NB_OBS_FORWARD
 from custom.utils.compute_reward import RewardFunction
 from custom.utils.control_gamepad import control_gamepad, gamepad_reset, gamepad_close_finish_pop_up_tm20
 from custom.utils.control_keyboard import keyres, apply_control
@@ -30,7 +29,7 @@ class TM2020Interface(RealTimeGymInterface):
                  save_replays: bool = False,
                  grayscale: bool = True,
                  resize_to=(64, 64),
-                 finish_reward=cfg.REWARD_END_OF_TRACK,
+                 finish_reward=cfg.END_OF_TRACK_REWARD,
                  constant_penalty=cfg.CONSTANT_PENALTY,
                  crash_penalty=cfg.CRASH_PENALTY):
         """
@@ -46,6 +45,7 @@ class TM2020Interface(RealTimeGymInterface):
             finish_reward: float: reward when passing the finish line
             constant_penalty: float: constant reward given at each time-step
         """
+        self.is_crashed = None
         self.last_time = None
         self.img_hist_len = img_hist_len
         self.img_hist = None
@@ -56,6 +56,8 @@ class TM2020Interface(RealTimeGymInterface):
         self.j = None
         self.window_interface = None
         self.small_window = None
+        self.crash_cooldown = None
+        self.crash_curr = None
         self.min_nb_steps_before_failure = min_nb_steps_before_failure
         self.save_replays = save_replays
         self.grayscale = grayscale
@@ -71,6 +73,7 @@ class TM2020Interface(RealTimeGymInterface):
             assert platform.system() == "Windows", "Sorry, Only Windows is supported for gamepad control"
             import vgamepad as vg
             self.j = vg.VX360Gamepad()
+            self.j.register_notification(callback_function=self.crash_callback)
             logging.debug(" virtual joystick in use")
         self.window_interface = WindowInterface("Trackmania")
         self.window_interface.move_and_resize()
@@ -78,7 +81,7 @@ class TM2020Interface(RealTimeGymInterface):
         self.img_hist = deque(maxlen=self.img_hist_len)
         self.img = None
         self.reward_function = RewardFunction(reward_data_path=cfg.REWARD_PATH,
-                                              nb_obs_forward=NB_OBS_FORWARD,
+                                              nb_obs_forward=cfg.NB_OBS_FORWARD,
                                               nb_obs_backward=15,
                                               nb_zero_rew_before_failure=10,
                                               min_nb_steps_before_failure=self.min_nb_steps_before_failure,
@@ -86,6 +89,15 @@ class TM2020Interface(RealTimeGymInterface):
                                               constant_penalty=self.constant_penalty
                                               )
         self.client = TM2020OpenPlanetClient()
+        self.is_crashed = False
+        self.crash_cooldown = 0
+        self.crash_curr = self.crash_cooldown
+
+    def crash_callback(self, client, target, large_motor, small_motor, led_number, user_data):
+        self.is_crashed = large_motor > 100 and self.crash_cooldown <= 0
+        if self.is_crashed:
+            print(f"crashed: {self.is_crashed}")
+            self.crash_cooldown = 10
 
     def initialize(self):
         self.initialize_common()

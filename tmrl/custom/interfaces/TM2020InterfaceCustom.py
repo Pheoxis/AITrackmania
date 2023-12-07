@@ -13,7 +13,7 @@ class TM2020InterfaceCustom(TM2020Interface):
             self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(160),
             record=False, save_replay: bool = False,
             grayscale: bool = False, resize_to: tuple = (128, 64),
-            finish_reward=cfg.REWARD_END_OF_TRACK, constant_penalty: float = 0.05,
+            finish_reward=cfg.END_OF_TRACK_REWARD, constant_penalty: float = 0.05,
             crash_penalty=cfg.CRASH_PENALTY
     ):
         super().__init__(

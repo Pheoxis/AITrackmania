@@ -55,9 +55,9 @@ def dump_run_instance_images_dataset(run_instance, checkpoint_path):
 
 
 def update_memory(run_instance):
-    steps = cfg.TMRL_CONFIG["TRAINING_STEPS_PER_ROUND"]
-    memory_size = cfg.TMRL_CONFIG["MEMORY_SIZE"]
-    batch_size = cfg.TMRL_CONFIG["BATCH_SIZE"]
+    steps = cfg.MODEL_CONFIG["TRAINING_STEPS_PER_ROUND"]
+    memory_size = cfg.MODEL_CONFIG["MEMORY_SIZE"]
+    batch_size = cfg.MODEL_CONFIG["BATCH_SIZE"]
     if run_instance.steps != steps \
             or run_instance.memory.batch_size != batch_size \
             or run_instance.memory.memory_size != memory_size:
@@ -166,13 +166,13 @@ def update_run_instance(run_instance, training_cls):
                 run_instance.agent.m = m
                 logging.info(f"M switched to {m} (old: {old}).")
 
-    epochs = cfg.TMRL_CONFIG["MAX_EPOCHS"]
-    rounds = cfg.TMRL_CONFIG["ROUNDS_PER_EPOCH"]
-    update_model_interval = cfg.TMRL_CONFIG["UPDATE_MODEL_INTERVAL"]
-    update_buffer_interval = cfg.TMRL_CONFIG["UPDATE_BUFFER_INTERVAL"]
-    max_training_steps_per_env_step = cfg.TMRL_CONFIG["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"]
+    epochs = cfg.MODEL_CONFIG["MAX_EPOCHS"]
+    rounds = cfg.MODEL_CONFIG["ROUNDS_PER_EPOCH"]
+    update_model_interval = cfg.MODEL_CONFIG["UPDATE_MODEL_INTERVAL"]
+    update_buffer_interval = cfg.MODEL_CONFIG["UPDATE_BUFFER_INTERVAL"]
+    max_training_steps_per_env_step = cfg.MODEL_CONFIG["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"]
     profiling = cfg.PROFILE_TRAINER
-    start_training = cfg.TMRL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"]
+    start_training = cfg.MODEL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"]
 
     if run_instance.epochs != epochs:
         old = run_instance.epochs

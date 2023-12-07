@@ -13,7 +13,7 @@ class TM2020InterfaceTQC(TM2020Interface):
             self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(160),
             record=False, save_replay: bool = False,
             grayscale: bool = False, resize_to: tuple = (128, 64),
-            finish_reward=cfg.REWARD_END_OF_TRACK, constant_penalty: float = 0.05,
+            finish_reward=cfg.END_OF_TRACK_REWARD, constant_penalty: float = 0.05,
             crash_penalty=cfg.CRASH_PENALTY, checkpoint_reward=cfg.CHECKPOINT_REWARD,
             lap_reward=cfg.LAP_REWARD
     ):
@@ -94,7 +94,8 @@ class TM2020InterfaceTQC(TM2020Interface):
         img = self.window_interface.screenshot()[:, :, :3]  # BGR ordering
         height, _ = img.shape[:2]
         cut_height = int(height * percentage_to_cut)
-        img = img[cut_height:, :]
+        cut_timer_height = int(height * 0.95)
+        img = img[cut_height:cut_timer_height, :]
         if self.resize_to is not None:  # cv2.resize takes dim as (width, height)
             img = cv2.resize(img, self.resize_to)
         if self.grayscale:

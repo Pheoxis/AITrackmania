@@ -1,4 +1,4 @@
-
+# TODO: Obczaić te wartości
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 EPSILON = 1e-7
