@@ -964,6 +964,7 @@ class MemoryR2D2(R2D2Memory):
             self.data[20] = self.data[20][to_trim:]
             self.data[21] = self.data[21][to_trim:]
 
+
         return self
 
 
@@ -1188,3 +1189,4 @@ class MemoryR2D2mini(R2D2Memory):
             self.data[21] = self.data[21][to_trim:]
 
         return self
+

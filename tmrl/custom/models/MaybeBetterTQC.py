@@ -270,6 +270,7 @@ class SquashedActorQRCNN(TorchActorModule):
         )
         self.conv_branch = CNNModule(mlp_out_size=32)
         self.activation = activation()
+        self.output_activation = nn.Tanh()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
@@ -385,7 +386,7 @@ class SquashedActorQRCNN(TorchActorModule):
 
         # lstm_out, (h0, c0) = self.rnn_block(layernorm_cat, (h0, c0))
 
-        noisy_out = self.activation(self.noisy_out(rnn_cat_out))
+        noisy_out = self.output_activation(self.noisy_out(rnn_cat_out))
 
         mu = self.mu_layer(noisy_out)
         log_std = self.log_std_layer(noisy_out)

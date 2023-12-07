@@ -619,6 +619,7 @@ class TQCAgent(TrainingAgent):
                 p_targ.data.mul_(self.polyak)
                 p_targ.data.add_((1 - self.polyak) * p.data)
 
+
         ret_dict = {
             "loss_actor": actor_loss.detach().item(),
             "loss_critic": critic_loss.detach().item(),  # or any other relevant critic loss
@@ -782,4 +783,16 @@ class IQNAgent(TrainingAgent):
 
         # ------------------- update target network ------------------- #
         self.soft_update(self.qnetwork_local, self.qnetwork_target)
-        return loss.detach().cpu().numpy()
+
+
+        #     ret_dict = {
+        #         "loss_actor": actor_loss.item(),
+        #         "loss_critic": critic_loss.item(),  # or any other relevant critic loss
+        #      }
+        #
+        #     if self.learn_entropy_coef:
+        #         ret_dict["loss_entropy_coef"] = alpha_loss.item()
+        #         ret_dict["entropy_coef"] = alpha_t.item()
+        #
+        # return ret_dict
+
