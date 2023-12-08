@@ -58,7 +58,7 @@ def init_kaiming(layer):
 
 
 class CNNModule(nn.Module):
-    def __init__(self, mlp_out_size: int = 256, activation=nn.LeakyReLU, seed: int = cfg.SEED):
+    def __init__(self, mlp_out_size: int = cfg.CNN_OUTPUT_SIZE, activation=nn.LeakyReLU, seed: int = cfg.SEED):
         super(CNNModule, self).__init__()
         torch.manual_seed(seed)
         np.random.seed(seed)
@@ -72,9 +72,9 @@ class CNNModule(nn.Module):
         self.out_activation = nn.ReLU()
         # self.h_out, self.w_out = cfg.IMG_HEIGHT, cfg.IMG_WIDTH
         hist = cfg.IMG_HIST_LEN
-        filters = (16, 32, 32)
+        filters = cfg.CNN_FILTERS
 
-        for i in range(3):
+        for i in range(len(filters)):
             if i + 1 >= len(filters):
                 last_index = -1
             else:
@@ -137,7 +137,8 @@ class CNNModule(nn.Module):
 class QRCNNQFunction(nn.Module):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_sizes=(128, 256), rnn_lens=(1, 2), mlp_branch_sizes=(64,),
+            self, observation_space, action_space, rnn_sizes=cfg.RNN_SIZES,
+            rnn_lens=cfg.RNN_LENS, mlp_branch_sizes=cfg.MLP_BRANCH_SIZES,
             activation=nn.ReLU, seed: int = cfg.SEED
     ):
         super().__init__()
@@ -276,7 +277,8 @@ class QRCNNQFunction(nn.Module):
 class SquashedActorQRCNN(TorchActorModule):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_sizes=(128, 256), rnn_lens=(1, 2), mlp_branch_sizes=(64,),
+            self, observation_space, action_space, rnn_sizes=cfg.RNN_SIZES,
+            rnn_lens=cfg.RNN_LENS, mlp_branch_sizes=cfg.MLP_BRANCH_SIZES,
             activation=nn.ReLU, seed: int = cfg.SEED
     ):
         super().__init__(
@@ -463,7 +465,8 @@ class SquashedActorQRCNN(TorchActorModule):
 class QRCNNActorCritic(nn.Module):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
-            self, observation_space, action_space, rnn_sizes=(128, 256), rnn_lens=(1, 2), mlp_branch_sizes=(64,),
+            self, observation_space, action_space, rnn_sizes=cfg.RNN_SIZES,
+            rnn_lens=cfg.RNN_LENS, mlp_branch_sizes=cfg.MLP_BRANCH_SIZES,
             activation=nn.ReLU, seed: int = cfg.SEED
     ):
         super().__init__()
