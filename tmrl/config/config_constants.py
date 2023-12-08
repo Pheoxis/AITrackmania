@@ -70,14 +70,7 @@ if PRAGMA_PROGRESS or PRAGMA_TRACKMAP:
     PRAGMA_LIDAR = True
 LIDAR_BLACK_THRESHOLD = [55, 55, 55]  # [88, 88, 88] for tiny road, [55, 55, 55] FOR BASIC ROAD
 
-LAP_REWARD = TMRL_CONFIG["ENV"]["LAP_REWARD"]
-LAP_COOLDOWN = TMRL_CONFIG["ENV"]["LAP_COOLDOWN"]
-CHECKPOINT_REWARD = TMRL_CONFIG["ENV"]["CHECKPOINT_COOLDOWN"]
-CHECKPOINT_COOLDOWN = TMRL_CONFIG["ENV"]["CHECKPOINT_COOLDOWN"]
-END_OF_TRACK_REWARD = TMRL_CONFIG["ENV"]["END_OF_TRACK_REWARD"]  # bonus reward at the end of the track
-CONSTANT_PENALTY = TMRL_CONFIG["ENV"]["CONSTANT_PENALTY"]  # -abs(x) : added to the reward at each time step
-CRASH_PENALTY = TMRL_CONFIG["ENV"]["CRASH_PENALTY"]
-ENV_CONFIG["SLEEP_TIME_AT_RESET"]  # 1.5 to start in a Markov state with the lidar
+SLEEP_TIME_AT_RESET = ENV_CONFIG["SLEEP_TIME_AT_RESET"]  # 1.5 to start in a Markov state with the lidar
 IMG_HIST_LEN = ENV_CONFIG["IMG_HIST_LEN"]  # 4 without RNN, 1 with RNN
 ACT_BUF_LEN = ENV_CONFIG["RTGYM_CONFIG"]["act_buf_len"]
 WINDOW_WIDTH = ENV_CONFIG["WINDOW_WIDTH"]
@@ -86,9 +79,6 @@ GRAYSCALE = ENV_CONFIG["IMG_GRAYSCALE"] if "IMG_GRAYSCALE" in ENV_CONFIG else Fa
 IMG_WIDTH = ENV_CONFIG["IMG_WIDTH"] if "IMG_WIDTH" in ENV_CONFIG else 64
 IMG_HEIGHT = ENV_CONFIG["IMG_HEIGHT"] if "IMG_HEIGHT" in ENV_CONFIG else 64
 
-PI_DISTRIBUTION = TMRL_CONFIG["ALG"]["PI_DISTRIBUTION"].lower()
-
-assert PI_DISTRIBUTION in ("tanhnormal", "normal"), "PI DISTRIBUTION SHOULD EITHER TANHNORMAL OR NORMAL"
 
 # DEBUGGING AND BENCHMARKING: ===================================
 # Only for checking the consistency of the custom networking methods, set it to False otherwise.
@@ -99,20 +89,14 @@ PROFILE_TRAINER = False  # Will profile each epoch in the Trainer when True
 SYNCHRONIZE_CUDA = False  # Set to True for profiling, False otherwise
 DEBUG_MODE = TMRL_CONFIG["DEBUG_MODE"] if "DEBUG_MODE" in TMRL_CONFIG.keys() else False
 
-SEED = TMRL_CONFIG["ENV"]["SEED"]
-MAP_NAME = TMRL_CONFIG["ENV"]["MAP_NAME"]
-
-
 # FILE SYSTEM: =================================================
 
 PATH_DATA = TMRL_FOLDER
 logging.debug(f" PATH_DATA:{PATH_DATA}")
 
-
 # 0 for not saving history, x for saving model history every x epochs new model received by RolloutWorker
 MODEL_CONFIG = TMRL_CONFIG["MODEL"]
 MODEL_HISTORY = MODEL_CONFIG["SAVE_MODEL_EVERY"]
-
 
 MODEL_PATH_WORKER = str(WEIGHTS_FOLDER / (RUN_NAME + ".tmod"))
 MODEL_PATH_SAVE_HISTORY = str(WEIGHTS_FOLDER / (RUN_NAME + "_"))
