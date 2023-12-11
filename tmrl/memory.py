@@ -324,18 +324,18 @@ class R2D2Memory(Memory, ABC):
                 self.cur_idx += int(batch_size * self.rewind)
                 # self.cur_idx += batch_size // 2
                 pom = tuple(range(0, self.cur_idx))
-                print(pom)
+                # print(pom)
                 return pom
             else:
                 if self.cur_idx + batch_size < len(self):
                     pom = tuple(range(self.cur_idx, self.cur_idx + batch_size))
                     # self.cur_idx += batch_size // 2
                     self.cur_idx += int(batch_size * self.rewind)
-                    print(pom)
+                    # print(pom)
                     return pom
                 else:
                     pom = tuple(range(len(self) - batch_size, len(self) - 1))
-                    print(pom)
+                    # print(pom)
                     self.cur_idx = 0
                     return pom
         else:

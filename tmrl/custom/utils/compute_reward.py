@@ -70,6 +70,7 @@ class RewardFunction:
         self.constant_penalty = constant_penalty
         self.lap_cur_cooldown = cfg.LAP_COOLDOWN
         self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
+        self.crash_cur_cooldown = cfg.CRASH_COOLDOWN
         self.new_lap = False
         self.near_finish = False
         self.new_checkpoint = False
@@ -90,7 +91,7 @@ class RewardFunction:
         self.mid_value = (self.max_value + self.min_value) / 2
         self.amplitude = (self.max_value - self.min_value) / 2
         self.oscillation_period = cfg.OSCILLATION_PERIOD  # oscillate every 50 iterations
-        self.index_divider = 4 * self.n
+        self.index_divider = 4 * cfg.N_STEPS
         print(f"n: {self.n}")
         self.furthest_race_progress = 0
 
@@ -203,12 +204,12 @@ class RewardFunction:
             self.new_checkpoint = True
 
         if self.new_lap and self.lap_cur_cooldown > 0:
-            reward += cfg.LAP_REWARD
+            reward += cfg.LAP_REWARD * self.lap_cur_cooldown / cfg.LAP_COOLDOWN
             self.lap_cur_cooldown -= 1
             print(f"lap reward added: {reward}")
 
         if self.new_checkpoint and self.checkpoint_cur_cooldown > 0:
-            reward += cfg.CHECKPOINT_REWARD
+            reward += cfg.CHECKPOINT_REWARD * self.checkpoint_cur_cooldown / cfg.CHECKPOINT_COOLDOWN
             self.checkpoint_cur_cooldown -= 1
             print(f"checkpoint reward added: {reward}")
 
@@ -231,7 +232,7 @@ class RewardFunction:
             reward += penalty
 
         if crashed:
-            reward -= round(abs(self.crash_penalty) * self.crash_counter ** (1. / 3), 4)
+            reward -= round(abs(self.crash_penalty) * self.crash_counter ** (1. / 3) * self.crash_cur_cooldown / cfg.CRASH_COOLDOWN, 6)
             self.crash_counter += 1
 
         if reward != 0.0:
