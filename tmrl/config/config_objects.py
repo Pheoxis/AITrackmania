@@ -18,6 +18,7 @@ from custom.custom_memories import MemoryTMLidar, MemoryTMLidarProgress, get_loc
     get_local_buffer_sample_mobilenet, MemoryTMFull, MemoryR2D2
 from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
     obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
+from custom.interfaces.TM2020InterfaceIMPALAwoImages import TM2020InterfaceIMPALAwoImages
 # from custom.interfaces.TM2020InterfaceTQC import TM2020InterfaceTQC
 from custom.interfaces.TM2020Interface import TM2020Interface
 from custom.interfaces.TM2020InterfaceIMPALA import TM2020InterfaceIMPALA
@@ -69,8 +70,11 @@ else:
         POLICY = tqc.SquashedActorQRCNN
     elif cfg.PRAGMA_MBEST_TQC:
         assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = impala.QRCNNActorCritic
-        POLICY = impala.SquashedActorQRCNN
+        if cfg.USE_IMAGES:
+            TRAIN_MODEL = impala.QRCNNActorCritic
+            POLICY = impala.SquashedActorQRCNN
+        else:
+            pass
         # assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
         # TRAIN_MODEL = mini.QRCNNActorCritic
         # POLICY = mini.SquashedActorQRCNN
@@ -91,15 +95,24 @@ if cfg.PRAGMA_LIDAR:
         INT = partial(TM2020InterfaceLidar, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD)
 else:
     if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC or cfg.PRAGMA_MBEST_TQC:
-        INT = partial(
-            TM2020InterfaceIMPALA, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
-            grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
-            crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
-            checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
 
-            min_nb_steps_before_failure=cfg.MIN_NB_STEPS_BEFORE_FAILURE
+        if cfg.USE_IMAGES:
+            INT = partial(
+                TM2020InterfaceIMPALA, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
+                grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
+                crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
+                checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
+                min_nb_steps_before_failure=cfg.MIN_NB_STEPS_BEFORE_FAILURE
+            )
+        else:
+            INT = partial(
+                TM2020InterfaceIMPALAwoImages, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
+                grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
+                crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
+                checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
+                min_nb_steps_before_failure=cfg.MIN_NB_STEPS_BEFORE_FAILURE
+            )
 
-        )
         # INT = partial(
         #     TM2020InterfaceTQCmini, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
         #     grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
@@ -219,7 +232,8 @@ elif ALG_NAME == "TQC":
         target_entropy=ALG_CONFIG["TARGET_ENTROPY"],  # None for automatic
         alpha=ALG_CONFIG["ALPHA"],  # inverse of reward scale
         top_quantiles_to_drop=ALG_CONFIG["TOP_QUANTILES_TO_DROP"],
-        quantiles_number=ALG_CONFIG["QUANTILES_NUMBER"]
+        quantiles_number=ALG_CONFIG["QUANTILES_NUMBER"],
+        n_steps=ALG_CONFIG["N_STEPS"]
     )
 else:
     AGENT = partial(

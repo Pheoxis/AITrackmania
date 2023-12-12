@@ -7,6 +7,7 @@ class TrainingAgent(ABC):
 
     CAUTION: When overriding `__init__`, don't forget to call `super().__init__` in the subclass.
     """
+
     def __init__(self,
                  observation_space,
                  action_space,
@@ -22,7 +23,7 @@ class TrainingAgent(ABC):
         self.device = device
 
     @abstractmethod
-    def train(self, epoch, batch, batch_index, iters):
+    def train(self, batch, epoch: int = None, batch_index: int = None, iters: int = None):
         """
         Executes a training step.
 
@@ -46,5 +47,3 @@ class TrainingAgent(ABC):
              ActorModule: current actor to be broadcast
         """
         raise NotImplementedError
-
-

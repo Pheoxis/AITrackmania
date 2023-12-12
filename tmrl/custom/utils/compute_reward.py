@@ -70,6 +70,7 @@ class RewardFunction:
         self.constant_penalty = constant_penalty
         self.lap_cur_cooldown = cfg.LAP_COOLDOWN
         self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
+        self.crash_cur_cooldown = cfg.CRASH_COOLDOWN
         self.new_lap = False
         self.near_finish = False
         self.new_checkpoint = False
@@ -90,8 +91,9 @@ class RewardFunction:
         self.mid_value = (self.max_value + self.min_value) / 2
         self.amplitude = (self.max_value - self.min_value) / 2
         self.oscillation_period = cfg.OSCILLATION_PERIOD  # oscillate every 50 iterations
-        self.index_divider = 4 * self.n
+        self.index_divider = 4 * cfg.N_STEPS
         print(f"n: {self.n}")
+        self.furthest_race_progress = 0
 
         if cfg.WANDB_DEBUG_REWARD:
             self.send_reward = []
@@ -202,12 +204,12 @@ class RewardFunction:
             self.new_checkpoint = True
 
         if self.new_lap and self.lap_cur_cooldown > 0:
-            reward += cfg.LAP_REWARD
+            reward += cfg.LAP_REWARD * self.lap_cur_cooldown / cfg.LAP_COOLDOWN
             self.lap_cur_cooldown -= 1
             print(f"lap reward added: {reward}")
 
         if self.new_checkpoint and self.checkpoint_cur_cooldown > 0:
-            reward += cfg.CHECKPOINT_REWARD
+            reward += cfg.CHECKPOINT_REWARD * self.checkpoint_cur_cooldown / cfg.CHECKPOINT_COOLDOWN
             self.checkpoint_cur_cooldown -= 1
             print(f"checkpoint reward added: {reward}")
 
@@ -230,7 +232,7 @@ class RewardFunction:
             reward += penalty
 
         if crashed:
-            reward -= round(abs(self.crash_penalty) * self.crash_counter ** (1. / 3), 4)
+            reward -= round(abs(self.crash_penalty) * self.crash_counter ** (1. / 3) * self.crash_cur_cooldown / cfg.CRASH_COOLDOWN, 6)
             self.crash_counter += 1
 
         if reward != 0.0:
@@ -238,6 +240,11 @@ class RewardFunction:
 
         # clipping reward (maps values above 6 and below -6 to 1 and -1)
         reward = math.tanh(6 / (1 + np.exp(-0.7 * reward)) - 3)
+
+        race_progress = self.compute_race_progress()
+
+        if race_progress > self.furthest_race_progress:
+            self.furthest_race_progress = race_progress
 
         if cfg.WANDB_DEBUG_REWARD:
             self.send_reward.append(reward)
@@ -251,7 +258,7 @@ class RewardFunction:
                 # wandb.log({"Run reward": self.reward_sum})
                 # self.change_min_nb_steps_before_failure()
                 self.i = self.i + 1
-                self.min_nb_steps_before_failure = int(self.mid_value + self.amplitude * np.cos(2 * np.pi * self.i / self.oscillation_period))
+                self.min_nb_steps_before_failure = int(self.mid_value + self.amplitude * np.sin(2 * np.pi * self.i / self.oscillation_period))
                 print(f"min_nb_steps_before_failure: {self.min_nb_steps_before_failure}")
                 if cfg.WANDB_DEBUG_REWARD:
                     send_reward_df = pd.DataFrame({"Reward": self.send_reward})
@@ -272,7 +279,8 @@ class RewardFunction:
                             "Run reward": self.episode_reward,
                             "Q1": q1_value, "Q2": q2_value, "Q3": q3_value, "mean": mean_value,
                             "max": max_value, "min": min_value,
-                            "count": count_value, "std": std_value
+                            "count": count_value, "std": std_value,
+                            "best race progress": self.furthest_race_progress
                         }
                     )
                     self.send_reward.clear()
@@ -330,4 +338,5 @@ class RewardFunction:
         self.crash_counter = 1
         self.lap_cur_cooldown = cfg.LAP_COOLDOWN
         self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
-        self.i = 0
+        self.furthest_race_progress = 0
+

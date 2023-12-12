@@ -57,83 +57,6 @@ def init_kaiming(layer):
     torch.nn.init.zeros_(layer.bias)
 
 
-class CNNModule(nn.Module):
-    def __init__(self, mlp_out_size: int = cfg.CNN_OUTPUT_SIZE, activation=nn.LeakyReLU, seed: int = cfg.SEED):
-        super(CNNModule, self).__init__()
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-        random.seed(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
-        self.activation = activation()
-        self.conv_groups = 2
-        self.conv_blocks = nn.ModuleList()
-        self.out_activation = nn.ReLU()
-        # self.h_out, self.w_out = cfg.IMG_HEIGHT, cfg.IMG_WIDTH
-        hist = cfg.IMG_HIST_LEN
-        filters = cfg.CNN_FILTERS
-
-        for i in range(len(filters)):
-            if i + 1 >= len(filters):
-                last_index = -1
-            else:
-                last_index = i + 1
-
-            # Create a residual block
-            residual_block = nn.Sequential(
-                nn.Conv2d(
-                    filters[i] if i != 0 else hist, filters[i], kernel_size=3,
-                    stride=1, padding="same", groups=1
-                ),
-                nn.MaxPool2d(kernel_size=3, stride=2),
-                nn.Conv2d(filters[i], filters[i], kernel_size=3, stride=1, padding=0, groups=self.conv_groups),
-                activation(),
-                nn.Conv2d(filters[i], filters[i], kernel_size=3, stride=1, padding="same", groups=self.conv_groups),
-                activation(),
-                nn.Conv2d(filters[i], filters[i], kernel_size=3, stride=1, padding=0, groups=self.conv_groups),
-                activation(),
-                nn.Conv2d(filters[i], filters[last_index], kernel_size=3, stride=1, padding="same",
-                          groups=self.conv_groups),
-                activation(),
-            )
-
-            # Add the residual block with a skip connection
-            self.conv_blocks.append(residual_block)
-            # self.h_out //= 2
-            # self.w_out //= 2
-
-        self.flatten = nn.Flatten()
-        flat_features = 256
-        self.mlp_out_size = mlp_out_size
-        self.fc1 = nn.Linear(in_features=flat_features, out_features=mlp_out_size)
-        self.initialize_weights()
-
-    def initialize_weights(self):
-        for m in self.conv_blocks:
-            if isinstance(m, torch.nn.Conv2d):
-                init_kaiming(m)
-        init_kaiming(self.fc1)
-
-    def forward(self, x):
-        x /= 255.0
-        i = 0
-        residual = None
-        for layer in self.conv_blocks:
-            if i % 2 == 0:
-                residual = x
-            if (residual.size(2) == x.size(2) or residual.size(3) == x.size(3)) and i > 0:
-                x = x + residual
-            x = layer(x)
-            i += 1
-
-        x = self.flatten(x)
-        x = self.fc1(x)
-        x = self.out_activation(x)
-
-        return x
-
-
 class QRCNNQFunction(nn.Module):
     # domyślne wartości parametrów muszą się zgadzać
     def __init__(
@@ -148,7 +71,6 @@ class QRCNNQFunction(nn.Module):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-        self.cnn_module = CNNModule()
         self.activation = activation()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -194,7 +116,6 @@ class QRCNNQFunction(nn.Module):
         self.rnn_sizes = list(rnn_sizes)
         self.rnn_lens = list(rnn_lens)
         # self.rnn_sizes[-1] += dim_act
-        self.img_index = -3
 
     def forward(self, observation, act, save_hidden=False):
         self.rnn_block_api.flatten_parameters()
@@ -203,16 +124,6 @@ class QRCNNQFunction(nn.Module):
         batch_size = observation[0].shape[0]
         if type(observation) is tuple:
             observation = list(observation)
-
-        cnn_branch_input = observation[-3].float()
-        if batch_size == 1:
-            if not cfg.GRAYSCALE:
-                cnn_branch_input = cnn_branch_input.permute(0, 3, 1, 2)
-            conv_branch_out = self.cnn_module(cnn_branch_input)
-        else:
-            if not cfg.GRAYSCALE:
-                cnn_branch_input = cnn_branch_input.permute(0, 3, 1, 2)
-            conv_branch_out = self.cnn_module(cnn_branch_input)
 
         if not save_hidden or self.h0 is None or self.c0 is None or self.h1 is None or self.c1 is None:
             device = observation[0].device
@@ -234,17 +145,11 @@ class QRCNNQFunction(nn.Module):
             h1 = self.h1
             c1 = self.c1
 
-        observation[-3] = conv_branch_out
-
         for index in range(len(observation) - 1):
             observation[index] = observation[index].view(batch_size, -1)
 
-        observation_except_img = observation[:self.img_index]
-        if len(observation) > self.img_index + 1:
-            observation_except_img += observation[(self.img_index + 1):]
-
         # Pack the tensors in observation_except_24 to handle variable sequence lengths
-        obs_seq_cat = torch.cat(observation_except_img, -1)
+        obs_seq_cat = torch.cat(observation, -1)
         obs_seq_cat = obs_seq_cat.view(batch_size, -1).float()
 
         if cfg.MODEL_CONFIG["API_LAYERNORM"]:
@@ -256,9 +161,7 @@ class QRCNNQFunction(nn.Module):
 
         rnn_block_api_out, (h0, c0) = self.rnn_block_api(mlp1_lvl1_out, (h0, c0))
 
-        img_api_out = torch.cat([rnn_block_api_out, conv_branch_out, act], dim=-1)
-
-        rnn_block_cat_out, (h1, c1) = self.rnn_block_cat(img_api_out, (h1, c1))
+        rnn_block_cat_out, (h1, c1) = self.rnn_block_cat(rnn_block_api_out, (h1, c1))
 
         model_out = self.model_out(rnn_block_api_out)
 
@@ -290,7 +193,6 @@ class SquashedActorQRCNN(TorchActorModule):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-        self.cnn_module = CNNModule()
         self.activation = activation()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -341,7 +243,6 @@ class SquashedActorQRCNN(TorchActorModule):
         self.c1 = None
         self.rnn_sizes = list(rnn_sizes)
         self.rnn_lens = list(rnn_lens)
-        self.img_index = -3
 
     def forward(self, observation, test=False, with_logprob=True, save_hidden=False):
         self.rnn_block_api.flatten_parameters()
@@ -350,18 +251,6 @@ class SquashedActorQRCNN(TorchActorModule):
         batch_size = observation[0].shape[0]
         if type(observation) is tuple:
             observation = list(observation)
-
-        cnn_branch_input = observation[-3].float()
-        if batch_size == 1:
-            if not cfg.GRAYSCALE:
-                cnn_branch_input = cnn_branch_input.permute(0, 3, 1, 2)
-
-            conv_branch_out = self.cnn_module(cnn_branch_input)
-        else:
-            if not cfg.GRAYSCALE:
-                cnn_branch_input = cnn_branch_input.permute(0, 3, 1, 2)
-
-            conv_branch_out = self.cnn_module(cnn_branch_input)
 
         if not save_hidden or self.h0 is None or self.c0 is None or self.h1 is None or self.c1 is None:
             device = observation[0].device
@@ -383,8 +272,6 @@ class SquashedActorQRCNN(TorchActorModule):
             h1 = self.h1
             c1 = self.c1
 
-        observation[-3] = conv_branch_out
-
         for index, _ in enumerate(observation):
             observation[index] = observation[index].view(batch_size, -1)
 
@@ -403,9 +290,7 @@ class SquashedActorQRCNN(TorchActorModule):
 
         rnn_block_api_out, (h0, c0) = self.rnn_block_api(mlp1_lvl1_out, (h0, c0))
 
-        img_api_out = torch.cat([rnn_block_api_out, conv_branch_out], dim=-1)
-
-        rnn_block_cat_out, (h1, c1) = self.rnn_block_cat(img_api_out, (h1, c1))
+        rnn_block_cat_out, (h1, c1) = self.rnn_block_cat(rnn_block_api_out, (h1, c1))
 
         model_out = self.model_out(rnn_block_api_out)
 
@@ -417,11 +302,6 @@ class SquashedActorQRCNN(TorchActorModule):
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         std = torch.exp(log_std)
 
-        # pi_distribution = None
-        # Pre-squash distribution and sample
-        # if cfg.PI_DISTRIBUTION == "tanhnormal":
-        #     pi_distribution = TanhNormal(mu, std)
-        # else:
         pi_distribution = Normal(mu, std)
 
         if test:

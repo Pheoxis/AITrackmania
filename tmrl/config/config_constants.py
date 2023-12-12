@@ -59,12 +59,14 @@ PRAGMA_BEST = RTGYM_INTERFACE.endswith("BEST")
 PRAGMA_BEST_TQC = RTGYM_INTERFACE.endswith("BEST_TQC")
 PRAGMA_MBEST_TQC = RTGYM_INTERFACE.endswith("MTQC")
 CRASH_PENALTY = ENV_CONFIG["CRASH_PENALTY"]
+CRASH_COOLDOWN = ENV_CONFIG["CRASH_COOLDOWN"]
 CONSTANT_PENALTY = ENV_CONFIG["CONSTANT_PENALTY"]  # -abs(x) : added to the reward at each time step
 LAP_REWARD = ENV_CONFIG["LAP_REWARD"]
 LAP_COOLDOWN = ENV_CONFIG["LAP_COOLDOWN"]
 CHECKPOINT_REWARD = ENV_CONFIG["CHECKPOINT_COOLDOWN"]
 CHECKPOINT_COOLDOWN = ENV_CONFIG["CHECKPOINT_COOLDOWN"]
 END_OF_TRACK_REWARD = ENV_CONFIG["END_OF_TRACK_REWARD"]  # bonus reward at the end of the track
+USE_IMAGES = ENV_CONFIG["USE_IMAGES"]
 
 if PRAGMA_PROGRESS or PRAGMA_TRACKMAP:
     PRAGMA_LIDAR = True
@@ -78,8 +80,6 @@ WINDOW_HEIGHT = ENV_CONFIG["WINDOW_HEIGHT"]
 GRAYSCALE = ENV_CONFIG["IMG_GRAYSCALE"] if "IMG_GRAYSCALE" in ENV_CONFIG else False
 IMG_WIDTH = ENV_CONFIG["IMG_WIDTH"] if "IMG_WIDTH" in ENV_CONFIG else 64
 IMG_HEIGHT = ENV_CONFIG["IMG_HEIGHT"] if "IMG_HEIGHT" in ENV_CONFIG else 64
-
-
 # DEBUGGING AND BENCHMARKING: ===================================
 # Only for checking the consistency of the custom networking methods, set it to False otherwise.
 # Caution: difficult to handle if reset transitions are collected.
@@ -132,8 +132,8 @@ CREDENTIALS_DIRECTORY = TMRL_CONFIG["TLS_CREDENTIALS_DIRECTORY"] if TMRL_CONFIG[
 HOSTNAME = TMRL_CONFIG["TLS_HOSTNAME"]
 NB_WORKERS = None if TMRL_CONFIG["NB_WORKERS"] < 0 else TMRL_CONFIG["NB_WORKERS"]
 
-BUFFER_SIZE = TMRL_CONFIG[
-    "BUFFER_SIZE"]  # 268  435 456  # socket buffer size (200 000 000 is large enough for 1000 images right now)
+# (200 000 000 is large enough for 1000 images right now)
+BUFFER_SIZE = TMRL_CONFIG["BUFFER_SIZE"]  # (268_435_456) socket buffer size
 HEADER_SIZE = TMRL_CONFIG["HEADER_SIZE"]  # fixed number of characters used to describe the data length
 
 # MODEL CONFIG =========================
@@ -142,6 +142,20 @@ SCHEDULER_CONFIG = MODEL_CONFIG["SCHEDULER"]
 NOISY_LINEAR_CRITIC = MODEL_CONFIG["NOISY_LINEAR_CRITIC"]
 NOISY_LINEAR_ACTOR = MODEL_CONFIG["NOISY_LINEAR_ACTOR"]
 DROPOUT = MODEL_CONFIG["DROPOUT"]
+CNN_FILTERS = MODEL_CONFIG["CNN_FILTERS"]
+CNN_OUTPUT_SIZE = MODEL_CONFIG["CNN_OUTPUT_SIZE"]
+RNN_LENS = MODEL_CONFIG["RNN_LENS"]
+RNN_SIZES = MODEL_CONFIG["RNN_SIZES"]
+MLP_BRANCH_SIZES = MODEL_CONFIG["MLP_BRANCH_SIZES"]
+
+# ALG CONFIG ============================
+ALG_CONFIG = TMRL_CONFIG["ALG"]
+N_STEPS = ALG_CONFIG["N_STEPS"]
+WEIGHT_CLIPPING_ENABLED = ALG_CONFIG["CLIPPING_WEIGHTS"]
+WEIGHT_CLIPPING_VALUE = ALG_CONFIG["CLIP_WEIGHTS_VALUE"]
+ACTOR_WEIGHT_DECAY = ALG_CONFIG["ACTOR_WEIGHT_DECAY"]
+CRITIC_WEIGHT_DECAY = ALG_CONFIG["CRITIC_WEIGHT_DECAY"]
+POINTS_NUMBER = ALG_CONFIG["NUMBER_OF_POINTS"]
 
 
 # CREATE CONFIG ===================================
@@ -152,7 +166,7 @@ def create_config():
     scheduler_config = model_config["SCHEDULER"]
     env_config = TMRL_CONFIG["ENV"]
 
-    config["TRAINING_STEPS_PER_ROUND"] = model_config
+    config["TRAINING_STEPS_PER_ROUND"] = model_config["TRAINING_STEPS_PER_ROUND"]
     config["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"] = model_config["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"]
     config["ENVIRONMENT_STEPS_BEFORE_TRAINING"] = model_config["ENVIRONMENT_STEPS_BEFORE_TRAINING"]
     config["UPDATE_MODEL_INTERVAL"] = model_config["UPDATE_MODEL_INTERVAL"]
@@ -160,6 +174,13 @@ def create_config():
     config["SAVE_MODEL_EVERY"] = model_config["SAVE_MODEL_EVERY"]
     config["MEMORY_SIZE"] = model_config["MEMORY_SIZE"]
     config["BATCH_SIZE"] = model_config["BATCH_SIZE"]
+
+    config["CNN_FILTERS"] = model_config["CNN_FILTERS"]
+    for index, size in enumerate(config["CNN_FILTERS"]):
+        config[f"CNN_FILTER{index}"] = size
+
+    config["CNN_OUTPUT_SIZE"] = model_config["CNN_OUTPUT_SIZE"]
+
     config["RNN_SIZES"] = model_config["RNN_SIZES"]
 
     for index, size in enumerate(config["RNN_SIZES"]):
@@ -184,6 +205,7 @@ def create_config():
     config["MAX_NB_STEPS_BEFORE_FAILURE"] = env_config["MAX_NB_STEPS_BEFORE_FAILURE"]
     config["OSCILLATION_PERIOD"] = env_config["OSCILLATION_PERIOD"]
     config["CRASH_PENALTY"] = env_config["CRASH_PENALTY"]
+    config["CRASH_COOLDOWN"] = env_config["CRASH_COOLDOWN"]
     config["CONSTANT_PENALTY"] = env_config["CONSTANT_PENALTY"]
     config["LAP_REWARD"] = env_config["LAP_REWARD"]
     config["LAP_COOLDOWN"] = env_config["LAP_COOLDOWN"]
@@ -196,6 +218,12 @@ def create_config():
     config["LR_ACTOR"] = alg_config["LR_ACTOR"]
     config["LR_CRITIC"] = alg_config["LR_CRITIC"]
     config["LR_CRITIC_DIVIDED_BY_LR_ACTOR"] = config["LR_CRITIC"] / config["LR_ACTOR"]
+    config["N_STEPS"] = alg_config["N_STEPS"]
+    config["ACTOR_WEIGHT_DECAY"] = alg_config["ACTOR_WEIGHT_DECAY"]
+    config["CRITIC_WEIGHT_DECAY"] = alg_config["CRITIC_WEIGHT_DECAY"]
+    config["CLIPPING_WEIGHTS"] = alg_config["CLIPPING_WEIGHTS"]
+    config["CLIP_WEIGHTS_VALUE"] = alg_config["CLIP_WEIGHTS_VALUE"]
+    config["POINTS_NUMBER"] = alg_config["NUMBER_OF_POINTS"]
 
     config["LR_ENTROPY"] = alg_config["LR_ENTROPY"]
     config["GAMMA"] = alg_config["GAMMA"]

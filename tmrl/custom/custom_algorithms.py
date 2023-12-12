@@ -446,10 +446,13 @@ class TQCAgent(TrainingAgent):
     target_entropy: float = None
     top_quantiles_to_drop: int = 3  # ~8% of total number of atoms
     quantiles_number: int = 32
+    n_steps: int = 1
 
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
     def __post_init__(self):
+        if self.n_steps == 1:
+            self.n_steps = 0
         observation_space, action_space = self.observation_space, self.action_space
         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
         model = self.model_cls(observation_space, action_space)  # Use TQCActorCritic
@@ -459,9 +462,10 @@ class TQCAgent(TrainingAgent):
 
         # Set up optimizers for policy and q-function
 
-        self.actor_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor, weight_decay=0.005)
+        self.actor_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor, weight_decay=cfg.ACTOR_WEIGHT_DECAY)
+
         self.critic_optimizer = Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()),
-                                     lr=self.lr_critic, weight_decay=0.005)
+                                     lr=self.lr_critic, weight_decay=cfg.CRITIC_WEIGHT_DECAY)
 
         if len(cfg.SCHEDULER_CONFIG["NAME"]) > 0:
             self.actor_scheduler = CosineAnnealingWarmRestarts(
@@ -536,18 +540,17 @@ class TQCAgent(TrainingAgent):
         return loss
 
     @staticmethod
-    def clip_weights(model, max_value=0.98):
+    def clip_weights(model, max_value=cfg.WEIGHT_CLIPPING_VALUE):
         for param in model.parameters():
             param.data.clamp_(-max_value, max_value)
 
-    def train(self, epoch, batch, batch_index, iters):
+    def train(self, batch, epoch, batch_index, iters):
         o, a, r, o2, d, _ = batch
 
         batch_size = r.shape[0]
         pi, logp_pi = self.model.actor(o)
 
         # loss_alpha:
-
         alpha_loss = None
         if self.learn_entropy_coef:
             # Important: detach the variable from the graph
@@ -568,7 +571,33 @@ class TQCAgent(TrainingAgent):
         q1_pi = self.model.q1(o, pi)
         q2_pi = self.model.q2(o, pi)
 
+        # print(f"Initial rewards: {r}")
+        # print(f"Initial dones: {d}")
+
+        # last_step_index = 0
+        # TODO: check if it correct
+        # https://arxiv.org/pdf/1901.07510.pdf
+        n_step_return = None
+        if self.n_steps > 1:
+            n_step_return = torch.zeros(batch_size, device=r.device)
+            for i in range(len(r)):
+                for step in range(self.n_steps):
+                    if i + step < len(r):
+                        if d[i + step] == 1.:
+                            break
+                        # Accumulate reward for each step, considering if the state is not terminal
+                        n_step_return[i] += (self.gamma ** step) * r[i + step]
+                # print(f"Step {step}: n_step_return = {n_step_return}, n_step_not_done = {n_step_not_done}")
+            # print(f"Final n_step_return: {n_step_return}")
+
+        # n_step_return = n_step_return[:-self.n_steps]
+        # o = o[:-self.n_steps]
+        # o2 = o2[:-self.n_steps]
+        # d = d[:-self.n_steps]
+
         # https://github.com/Stable-Baselines-Team/stable-baselines3-contrib/blob/master/sb3_contrib/tqc/tqc.py :
+        # TODO: check if it correct
+        # https://arxiv.org/pdf/2005.04269.pdf
         with torch.no_grad():
             new_next_action, next_log_pi = self.model.actor(o2)  # Tensor(batch x 3), Tensor(batch)
             # Compute and cut quantiles at the next state
@@ -580,9 +609,26 @@ class TQCAgent(TrainingAgent):
             target_quantiles = sorted_z_part - alpha_t * next_log_pi.reshape(-1, 1)
             not_done = 1 - d
             tmp = target_quantiles * not_done[:, None]
-            r = r.unsqueeze(1)
-            r = r.expand(-1, self.quantiles_total - self.top_quantiles_to_drop)
-            backup = r + self.gamma * tmp
+            # r = r.unsqueeze(1)
+            # r = r.expand(-1, self.quantiles_total - self.top_quantiles_to_drop)
+            # backup = r + self.gamma * tmp
+            backup = n_step_return.unsqueeze(1).expand(-1, self.quantiles_total - self.top_quantiles_to_drop) + tmp
+
+            # print(f"rewards before: {r}")
+            # print(f"n_step_return shape: {n_step_return.shape}")
+            # print(f"target_quantiles mean shape: {target_quantiles.mean(dim=1).shape}")
+            # print(f"n_step_not_done shape: {n_step_not_done.shape}")
+            # n_step_return += self.gamma ** self.n_steps * target_quantiles.mean(dim=1) * n_step_not_done
+            # print(f"Target quantiles: {target_quantiles}")
+            # print(f"Adjusted n_step_return after target quantile inclusion: {n_step_return}")
+
+        # not_done = 1 - d
+        # tmp = target_quantiles * not_done[:, None]
+        # r = r.unsqueeze(1)
+        # r = r.expand(-1, self.quantiles_total - self.top_quantiles_to_drop)
+        # backup = n_step_return.unsqueeze(1).expand(-1, self.quantiles_total - self.top_quantiles_to_drop) + self.gamma ** self.n_step * tmp
+        # backup = n_step_return.unsqueeze(1).expand(-1, self.quantiles_total - self.top_quantiles_to_drop)
+        # print(f"Backup: {backup}")
 
         cur_z = torch.stack((q1_pi, q2_pi), dim=1)
         critic_loss = self.quantile_huber_loss_f(cur_z, backup)
@@ -590,7 +636,7 @@ class TQCAgent(TrainingAgent):
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
-        self.critic_scheduler.step(epoch + batch_index / iters)  # TODO: idk czy dobrze
+        self.critic_scheduler.step(epoch + batch_index / iters)  # TODO: check if it correct
 
         new_action, log_pi = self.get_actor()(o)
         q1_pi = self.model.q1(o, new_action)
@@ -601,14 +647,17 @@ class TQCAgent(TrainingAgent):
         self.model.q1.requires_grad_(False)
         self.model.q2.requires_grad_(False)
 
-        # self.clip_weights(self.model.q1)
-        # self.clip_weights(self.model.q2)
+        if cfg.WEIGHT_CLIPPING_ENABLED:
+            self.clip_weights(self.model.q1)
+            self.clip_weights(self.model.q2)
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
-        self.actor_scheduler.step(epoch + batch_index / iters)  # TODO: idk czy dobrze
-        # self.clip_weights(self.model.actor)
+        self.actor_scheduler.step(epoch + batch_index / iters)  # TODO: check if it correct
+
+        if cfg.WEIGHT_CLIPPING_ENABLED:
+            self.clip_weights(self.model.actor)
 
         self.model.q1.requires_grad_(True)
         self.model.q2.requires_grad_(True)
@@ -620,7 +669,6 @@ class TQCAgent(TrainingAgent):
                 p_targ.data.mul_(self.polyak)
                 p_targ.data.add_((1 - self.polyak) * p.data)
 
-
         ret_dict = {
             "loss_actor": actor_loss.detach().item(),
             "loss_critic": critic_loss.detach().item(),  # or any other relevant critic loss
@@ -631,6 +679,8 @@ class TQCAgent(TrainingAgent):
         if self.learn_entropy_coef:
             ret_dict["loss_entropy_coef"] = alpha_loss.detach().item()
             ret_dict["entropy_coef"] = alpha_t.item()
+
+        # print(f"Return Dictionary: {ret_dict}")
 
         return ret_dict
 
@@ -795,5 +845,4 @@ class IQNAgent(TrainingAgent):
         #         ret_dict["entropy_coef"] = alpha_t.item()
         #
         # return ret_dict
-
 

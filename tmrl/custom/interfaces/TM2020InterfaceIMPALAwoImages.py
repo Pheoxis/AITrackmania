@@ -11,7 +11,7 @@ from custom.utils.control_mouse import mouse_save_replay_tm20
 import config.config_constants as cfg
 
 
-class TM2020InterfaceIMPALA(TM2020Interface):
+class TM2020InterfaceIMPALAwoImages(TM2020Interface):
     def __init__(
             self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(160),
             record=False, save_replay: bool = False,
@@ -66,15 +66,6 @@ class TM2020InterfaceIMPALA(TM2020Interface):
 
         next_checkpoints = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number, ))
 
-        if self.resize_to is not None:
-            w, h = self.resize_to
-        else:
-            w, h = cfg.WINDOW_HEIGHT, cfg.WINDOW_WIDTH
-        if self.grayscale:
-            img = spaces.Box(low=0.0, high=255.0, shape=(self.img_hist_len, h, w))  # cv2 grayscale images are (h, w)
-        else:
-            img = spaces.Box(low=0.0, high=255.0, shape=(self.img_hist_len, h, w, 3))  # cv2 images are (h, w, c)
-
         return spaces.Tuple(
             (
                 next_checkpoints,
@@ -84,28 +75,9 @@ class TM2020InterfaceIMPALA(TM2020Interface):
                 gear,
                 aim_yaw, aim_pitch,
                 steer_angle, slip_coef,
-                failure_counter,
-                img
+                failure_counter
             )
         )
-
-    def grab_data_and_img(self, percentage_to_cut: float = 0.2):
-        img = self.window_interface.screenshot()[:, :, :3]  # BGR ordering
-        height, _ = img.shape[:2]
-        cut_height = int(height * percentage_to_cut)
-        img = img[cut_height:, :]
-        if self.resize_to is not None:  # cv2.resize takes dim as (width, height)
-            img = cv2.resize(img, self.resize_to)
-        if self.grayscale:
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        else:
-            img = img[:, :, ::-1]  # reversed view for numpy RGB convention
-        data = self.grab_data()
-        # print(f"data: {data}")
-        self.img = img  # for render()
-        # cv2.imshow("Environment", img)
-        # cv2.waitKey(1)
-        return data, img
 
     def grab_data(self):
         data = self.client.retrieve_data()
@@ -116,7 +88,7 @@ class TM2020InterfaceIMPALA(TM2020Interface):
             returns the observation, the reward, and a terminated signal for end of episode
             obs must be a list of numpy arrays
         """
-        data, img = self.grab_data_and_img()
+        data = self.grab_data()
         # print(f"data: {data}")
         cur_cp = int(data[0])
         cur_lap = int(data[1])
@@ -149,9 +121,6 @@ class TM2020InterfaceIMPALA(TM2020Interface):
             next_lap=self.cur_lap < cur_lap
         )
 
-        self.img_hist.append(img)
-        imgs = np.array(list(self.img_hist))
-
         race_progress = self.reward_function.compute_race_progress()
 
         next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, self.points_number)
@@ -179,8 +148,7 @@ class TM2020InterfaceIMPALA(TM2020Interface):
             gear,
             aim_yaw, aim_pitch,
             steer_angle, slip_coef,
-            failure_counter,
-            imgs
+            failure_counter
         ]
 
         total_obs = [next_checkpoints] + observation
@@ -195,16 +163,8 @@ class TM2020InterfaceIMPALA(TM2020Interface):
         """
         obs must be a list of numpy arrays
         """
-        # if options['pad'] is not None and options['pad']:
-        #     self.gamepad = None
-        #     if not self.initialized:
-        #         self.initialize()
-        #     print(f"Restart the map")
-        #     time_sleep = max(0, cfg.SLEEP_TIME_AT_RESET - 0.1)
-        #     time.sleep(time_sleep)
-        # else:
         self.reset_common()
-        data, img = self.grab_data_and_img()
+        data = self.grab_data()
 
         self.cur_lap = 0
         self.cur_checkpoint = 0
@@ -234,10 +194,6 @@ class TM2020InterfaceIMPALA(TM2020Interface):
 
         next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, self.points_number)
 
-        for _ in range(self.img_hist_len):
-            self.img_hist.append(img)
-        imgs = np.array(list(self.img_hist))
-
         observation = [
             speed, acceleration, jerk,
             race_progress,
@@ -245,8 +201,7 @@ class TM2020InterfaceIMPALA(TM2020Interface):
             gear,
             aim_yaw, aim_pitch,
             steer_angle, slip_coef,
-            failure_counter,
-            imgs
+            failure_counter
         ]
 
         total_obs = [next_checkpoints] + observation

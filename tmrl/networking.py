@@ -302,6 +302,9 @@ def run_with_wandb(entity, project, run_id, interface, run_cls, checkpoint_path:
     logging.debug(f" run_cls: {run_cls}")
     config = partial_to_dict(run_cls)
     config['environ'] = log_environment_variables()
+    hiperparams_dict = cfg.create_config()
+    for key, value in hiperparams_dict.items():
+        config[key] = value
     # config['git'] = git_info()  # TODO: check this for bugs
     resume = checkpoint_path and exists(checkpoint_path)
     wandb_initialized = False
@@ -314,7 +317,7 @@ def run_with_wandb(entity, project, run_id, interface, run_cls, checkpoint_path:
                 project=project,
                 id=run_id + " TRAINER",
                 resume=resume,
-                config=config.update(cfg.create_config()),
+                config=config,
                 job_type="trainer"
             )
             wandb_initialized = True
