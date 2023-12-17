@@ -164,7 +164,7 @@ class RewardFunction:
             # stop condition
             if index >= self.datalen or temp <= 0:
                 break
-        reward = (best_index - self.cur_idx) / self.index_divider
+        reward = (best_index - self.cur_idx) * (1 + speed / 200.) / self.index_divider
         if best_index == self.cur_idx:  # if the best index didn't change, we rewind (more Markovian reward)
             min_dist = np.inf
             index = self.cur_idx

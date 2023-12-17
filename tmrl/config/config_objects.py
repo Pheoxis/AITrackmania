@@ -69,7 +69,7 @@ else:
         TRAIN_MODEL = tqc.QRCNNActorCritic
         POLICY = tqc.SquashedActorQRCNN
     elif cfg.PRAGMA_MBEST_TQC:
-        assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
+        assert ALG_NAME in ("TQC", "SAC"), f"{ALG_NAME} is not implemented here."
         if cfg.USE_IMAGES:
             TRAIN_MODEL = impala.QRCNNActorCritic
             POLICY = impala.SquashedActorQRCNN
