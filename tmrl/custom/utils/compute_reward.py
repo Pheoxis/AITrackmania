@@ -276,11 +276,11 @@ class RewardFunction:
 
                     wandb.log(
                         {
-                            "Run reward": self.episode_reward,
-                            "Q1": q1_value, "Q2": q2_value, "Q3": q3_value, "mean": mean_value,
-                            "max": max_value, "min": min_value,
-                            "count": count_value, "std": std_value,
-                            "best race progress": self.furthest_race_progress
+                            "run/Run reward": self.episode_reward,
+                            "run/Q1": q1_value, "run/Q2": q2_value, "run/Q3": q3_value, "run/mean": mean_value,
+                            "run/max": max_value, "run/min": min_value,
+                            "run/count": count_value, "run/std": std_value,
+                            "run/best race progress": self.furthest_race_progress
                         }
                     )
                     self.send_reward.clear()
