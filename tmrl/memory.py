@@ -361,10 +361,9 @@ class R2D2Memory(Memory, ABC):
                         self.previous_episode = self.end_episodes_indices[previous_episode_index]
 
                 episode_length = self.chosen_episode - self.previous_episode
-                self.chosen_burn_in = random.randint(self.burn_ins[0], self.burn_ins[1])  # Losowanie burn-in
+                self.chosen_burn_in = random.randint(self.burn_ins[0], self.burn_ins[1])
 
-                if episode_length <= batch_size + self.chosen_burn_in:  # kiedy epizod jest krótszy od batch size
-                    # print("krótszy batch")
+                if episode_length <= batch_size + self.chosen_burn_in:
                     result = tuple(range(self.previous_episode, self.chosen_episode - 1))
                     # print(result)
                     return result
@@ -383,8 +382,7 @@ class R2D2Memory(Memory, ABC):
                 # self.cur_idx -= batch_size // 2
                 self.cur_idx -= int(batch_size * self.rewind)
 
-                if self.cur_idx + batch_size >= self.chosen_episode:  # ostatni batch epizodu
-                    # print("ostatni batch")
+                if self.cur_idx + batch_size >= self.chosen_episode:
                     self.isNewEpisode = True
 
                     result = tuple(range(self.chosen_episode - batch_size, self.chosen_episode - 1))
@@ -392,7 +390,6 @@ class R2D2Memory(Memory, ABC):
                     self.cur_idx = self.chosen_episode
                     return result
                 else:
-                    # print("kontynuacja batcha ")
                     self.isNewEpisode = False
                     result = tuple(range(self.cur_idx, self.cur_idx + batch_size))
                     # print(result)
