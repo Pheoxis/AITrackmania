@@ -267,6 +267,7 @@ class R2D2Memory(Memory, ABC):
                          device=device,
                          # info_index=info_index
                          )
+        self.rewards_index = 19 if cfg.USE_IMAGES else 18
         self.previous_episode = 0
         self.end_episodes_indices = []
         self.chosen_episode = 0
@@ -313,9 +314,8 @@ class R2D2Memory(Memory, ABC):
         return normalized_list
 
     def sample_indices(self):
-
-        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[19])
-        self.reward_sums = [self.data[19][index]['reward_sum'] for index in self.end_episodes_indices]
+        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[self.rewards_index])
+        self.reward_sums = [self.data[self.rewards_index ][index]['reward_sum'] for index in self.end_episodes_indices]
         # print(self.end_episodes_indices)
         batch_size = self.batch_size
 
@@ -399,7 +399,7 @@ class R2D2Memory(Memory, ABC):
                     self.cur_idx += batch_size
                     return result
 
-                    self.last_index = self.chosen_episode
+                    # self.last_index = self.chosen_episode
 
         while len(indices) < self.batch_size:
             random_index = random.randint(0, len(self) - 1)
@@ -415,9 +415,21 @@ class R2D2Memory(Memory, ABC):
 
         indices = tuple(indices)
 
+        if len(indices) != self.batch_size:
+            ValueError("Kamil R2D2 dalej nie działa :(")
+
         return indices
     # def sample_indices(self):
     #     return tuple(randint(0, len(self) - 1) for _ in range(self.batch_size))
+
+    def __len__(self):
+        if len(self.data) == 0:
+            return 0
+        res = len(self.data[0]) - self.min_samples - 1
+        if res < 0:
+            return 0
+        else:
+            return res
 
 
     def sample(self):

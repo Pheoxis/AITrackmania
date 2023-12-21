@@ -184,12 +184,12 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
     gamma: float = 0.99
     polyak: float = 0.995
     alpha: float = 0.2  # fixed (v1) or initial (v2) value of the entropy coefficient
-    lr_actor: float = 1e-3  # learning rate
-    lr_critic: float = 1e-3  # learning rate
-    lr_entropy: float = 1e-3  # entropy autotuning (SAC v2)
+    lr_actor: float = cfg.ALG_CONFIG["LR_ACTOR"]  # learning rate
+    lr_critic: float = cfg.ALG_CONFIG["LR_CRITIC"]  # learning rate
+    lr_entropy: float = cfg.ALG_CONFIG["LR_ENTROPY"]  # entropy autotuning (SAC v2)
     learn_entropy_coef: bool = True  # if True, SAC v2 is used, else, SAC v1 is used
     target_entropy: float = None  # if None, the target entropy for SAC v2 is set automatically
-    n_steps: int = 1
+    n_steps: int = cfg.ALG_CONFIG["N_STEPS"]
 
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
@@ -282,8 +282,8 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
             # Important: detach the variable from the graph
             # so we don't change it with other losses
             # see https://github.com/rail-berkeley/softlearning/issues/60
-            alpha_t = torch.exp(self.log_alpha.detach())
-            loss_alpha = -(self.log_alpha * (logp_pi + self.target_entropy).detach()).mean()
+            alpha_t = self.log_alpha.detach().exp_()
+            loss_alpha = -(self.log_alpha.mul_(logp_pi.add_(self.target_entropy)).detach()).mean()
         else:
             alpha_t = self.alpha_t  # (1, )
 
@@ -298,11 +298,32 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
 
         # loss_q:
 
-        q1 = self.model.q1(o, a)
-        q2 = self.model.q2(o, a)
+        q1 = self.model.q1(o, a)[:truncated_batch_size]
+        q2 = self.model.q2(o, a)[:truncated_batch_size]
+
+        # if self.n_steps > 1:
+        #     print(f"r: {r}")
+        #     # Step 1: Precompute discount factors
+        #     discounts = self.gamma ** torch.arange(self.n_steps, device=r.device).unsqueeze(0)
+        #
+        #     # Step 2: Compute indices for each step
+        #     indices = torch.arange(batch_size, device=r.device).unsqueeze(1) + torch.arange(self.n_steps, device=r.device)
+        #     indices = indices.clamp(max=len(r) - 1)  # Ensure indices do not go out of bounds
+        #
+        #     # Step 3: Select rewards and done flags for each step
+        #     step_rewards = r[indices]
+        #     step_dones = d[indices]
+        #
+        #     # Step 4: Create a mask for terminal states
+        #     terminal_mask = (1 - step_dones.cumprod(dim=1))
+        #
+        #     # Step 5: Calculate the n-step return
+        #     n_step_return = (step_rewards * terminal_mask * discounts).sum(dim=1)
+        #     print(f"n_step_return: {n_step_return}")
 
         n_step_return = None
         if self.n_steps > 1:
+            # print(f"r: {r}")
             n_step_return = torch.zeros(batch_size, device=r.device)
             for i in range(len(r)):
                 for step in range(self.n_steps):
@@ -311,14 +332,12 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
                             break
                         # Accumulate reward for each step, considering if the state is not terminal
                         n_step_return[i] += (self.gamma ** step) * r[i + step]
-                # print(f"Step {step}: n_step_return = {n_step_return}, n_step_not_done = {n_step_not_done}")
             # print(f"Final n_step_return: {n_step_return}")
 
-            n_step_return = n_step_return[:truncated_batch_size]
+            r = n_step_return[:truncated_batch_size]
             o = o[:truncated_batch_size]
             o2 = o2[:truncated_batch_size]
             d = d[:truncated_batch_size]
-
 
         # Bellman backup for Q functions
         with torch.no_grad():
@@ -337,14 +356,17 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
                 q2_pi_targ = self.model_target.q2(o2, a2)
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)  # (batch size)
             if self.n_steps > 1:
-                backup = n_step_return.unsqueeze(1) + (1 - d) * (q_pi_targ - alpha_t * logp_a2)
+                backup = r + (1 - d) * (q_pi_targ - alpha_t * logp_a2)
             else:
+                # backup = r.add_(self.gamma * (1 - d).mul_(1 - d).mul_(q_pi_targ.sub_(alpha_t.mul_(logp_a2))))
                 backup = r + self.gamma * (1 - d) * (q_pi_targ - alpha_t * logp_a2)
 
         # MSE loss against Bellman backup
         loss_q1 = ((q1 - backup) ** 2).mean()
         loss_q2 = ((q2 - backup) ** 2).mean()
-        loss_critic = (loss_q1 + loss_q2) / 2  # averaged for homogeneity with REDQ
+        # loss_q1 = q1.sub_(backup).pow_(2).mean()
+        # loss_q2 = q2.sub_(backup).pow_(2).mean()
+        loss_critic = loss_q1.add_(loss_q2).div_(2)  # averaged for homogeneity with REDQ
 
         self.critic_optimizer.zero_grad()
         loss_critic.backward()
@@ -364,12 +386,12 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
         # loss_pi:
 
         # pi, logp_pi = self.model.actor(o)
-        q1_pi = self.model.q1(o, pi)
-        q2_pi = self.model.q2(o, pi)
+        q1_pi = self.model.q1(o, pi)[:truncated_batch_size]
+        q2_pi = self.model.q2(o, pi)[:truncated_batch_size]
         q_pi = torch.min(q1_pi, q2_pi)
 
         # Entropy-regularized policy loss
-        loss_actor = (alpha_t * logp_pi - q_pi).mean()
+        loss_actor = (alpha_t * logp_pi[:truncated_batch_size] - q_pi).mean()
 
         self.actor_optimizer.zero_grad()  # actor
         loss_actor.backward()
@@ -391,8 +413,9 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
             for p, p_targ in zip(self.model.parameters(), self.model_target.parameters()):
                 # NB: We use an in-place operations "mul_", "add_" to update target
                 # params, as opposed to "mul" and "add", which would make new tensors.
-                p_targ.data.mul_(self.polyak)
-                p_targ.data.add_((1 - self.polyak) * p.data)
+                p_targ.data.mul_(self.polyak).add_(p.data, alpha=(1 - self.polyak))
+                # p_targ.data.mul_(self.polyak)
+                # p_targ.data.add_((1 - self.polyak) * p.data)
 
         # FIXME: remove debug info
         with torch.no_grad():
@@ -404,12 +427,12 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
                     critic_lr=self.critic_optimizer.param_groups[0]['lr']
                 )
             else:
-                q1_o2_a2 = self.model.q1(o2, a2)
-                q2_o2_a2 = self.model.q2(o2, a2)
-                q1_targ_pi = self.model_target.q1(o, pi)
-                q2_targ_pi = self.model_target.q2(o, pi)
-                q1_targ_a = self.model_target.q1(o, a)
-                q2_targ_a = self.model_target.q2(o, a)
+                q1_o2_a2 = self.model.q1(o2, a2)[:truncated_batch_size]
+                q2_o2_a2 = self.model.q2(o2, a2)[:truncated_batch_size]
+                q1_targ_pi = self.model_target.q1(o, pi)[:truncated_batch_size]
+                q2_targ_pi = self.model_target.q2(o, pi)[:truncated_batch_size]
+                q1_targ_a = self.model_target.q1(o, a)[:truncated_batch_size]
+                q2_targ_a = self.model_target.q2(o, a)[:truncated_batch_size]
 
                 diff_q1pt_qpt = (q1_pi_targ - q_pi_targ).detach()
                 diff_q2pt_qpt = (q2_pi_targ - q_pi_targ).detach()
@@ -515,9 +538,9 @@ class TQCAgent(TrainingAgent):
     lr_entropy: float = 1e-3
     learn_entropy_coef: bool = True
     target_entropy: float = None
-    top_quantiles_to_drop: int = 3  # ~8% of total number of atoms
-    quantiles_number: int = 32
-    n_steps: int = 1
+    top_quantiles_to_drop: int = cfg.ALG_CONFIG["TOP_QUANTILES_TO_DROP"]  # ~8% of total number of atoms
+    quantiles_number: int = cfg.ALG_CONFIG["QUANTILES_NUMBER"]
+    n_steps: int = cfg.ALG_CONFIG["N_STEPS"]
 
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
@@ -747,25 +770,29 @@ class TQCAgent(TrainingAgent):
                     critic_lr=self.critic_optimizer.param_groups[0]['lr']
                 )
             else:
-                q1_o2_a2 = self.model.q1(o2, a2)
-                q2_o2_a2 = self.model.q2(o2, a2)
-                q1_targ_pi = self.model_target.q1(o, pi)
-                q2_targ_pi = self.model_target.q2(o, pi)
-                q1_targ_a = self.model_target.q1(o, a)
-                q2_targ_a = self.model_target.q2(o, a)
+                # q1_o2_a2 = self.model.q1(o2, a2)
+                # q2_o2_a2 = self.model.q2(o2, a2)
+                # q1_targ_pi = self.model_target.q1(o, pi)
+                # q2_targ_pi = self.model_target.q2(o, pi)
+                # q1_targ_a = self.model_target.q1(o, a)
+                # q2_targ_a = self.model_target.q2(o, a)
 
-                diff_q1pt_qpt = (q1_pi_targ - q_pi_targ).detach()
-                diff_q2pt_qpt = (q2_pi_targ - q_pi_targ).detach()
-                diff_q1_q1t_a2 = (q1_o2_a2 - q1_pi_targ).detach()
-                diff_q2_q2t_a2 = (q2_o2_a2 - q2_pi_targ).detach()
-                diff_q1_q1t_pi = (q1_pi - q1_targ_pi).detach()
-                diff_q2_q2t_pi = (q2_pi - q2_targ_pi).detach()
-                diff_q1_q1t_a = (q1 - q1_targ_a).detach()
-                diff_q2_q2t_a = (q2 - q2_targ_a).detach()
-                diff_q1_backup = (q1 - backup).detach()
-                diff_q2_backup = (q2 - backup).detach()
-                diff_q1_backup_r = (q1 - backup + r).detach()
-                diff_q2_backup_r = (q2 - backup + r).detach()
+                # q1_pi_targ_part = q_pi_targ[:self.quantiles_number]
+                # q2_pi_targ_part = q_pi_targ[self.quantiles_number:]
+                #
+                # diff_q1pt_qpt = (q1_pi_targ - q1_pi_targ_part).detach()
+                # diff_q2pt_qpt = (q2_pi_targ - q2_pi_targ_part).detach()
+
+                # diff_q1_q1t_a2 = (q1_o2_a2 - q1_pi_targ).detach()
+                # diff_q2_q2t_a2 = (q2_o2_a2 - q2_pi_targ).detach()
+                # diff_q1_q1t_pi = (q1_pi - q1_targ_pi).detach()
+                # diff_q2_q2t_pi = (q2_pi - q2_targ_pi).detach()
+                # diff_q1_q1t_a = (q1 - q1_targ_a).detach()
+                # diff_q2_q2t_a = (q2 - q2_targ_a).detach()
+                # diff_q1_backup = (q1 - backup).detach()
+                # diff_q2_backup = (q2 - backup).detach()
+                # diff_q1_backup_r = (q1 - backup + r).detach()
+                # diff_q2_backup_r = (q2 - backup + r).detach()
 
                 ret_dict = dict()
                 ret_dict["losses/loss_actor"] = actor_loss.detach()
@@ -787,30 +814,30 @@ class TQCAgent(TrainingAgent):
                 ret_dict["debug/q1_std"] = q1.detach().std()
                 ret_dict["debug/q2"] = q2.detach().mean()
                 ret_dict["debug/q2_std"] = q2.detach().std()
-                ret_dict["debug/diff_q1"] = diff_q1_backup.mean()
-                ret_dict["debug/diff_q1_std"] = diff_q1_backup.std()
-                ret_dict["debug/diff_q2"] = diff_q2_backup.mean()
-                ret_dict["debug/diff_q2_std"] = diff_q2_backup.std()
-                ret_dict["debug/diff_r_q1"] = diff_q1_backup_r.mean()
-                ret_dict["debug/diff_r_q1_std"] = diff_q1_backup_r.std()
-                ret_dict["debug/diff_r_q2"] = diff_q2_backup_r.mean()
-                ret_dict["debug/diff_r_q2_std"] = diff_q2_backup_r.std()
-                ret_dict["debug/diff_q1pt_qpt"] = diff_q1pt_qpt.mean()
-                ret_dict["debug/diff_q2pt_qpt"] = diff_q2pt_qpt.mean()
-                ret_dict["debug/diff_q1_q1t_a2"] = diff_q1_q1t_a2.mean()
-                ret_dict["debug/diff_q2_q2t_a2"] = diff_q2_q2t_a2.mean()
-                ret_dict["debug/diff_q1_q1t_pi"] = diff_q1_q1t_pi.mean()
-                ret_dict["debug/diff_q2_q2t_pi"] = diff_q2_q2t_pi.mean()
-                ret_dict["debug/diff_q1_q1t_a"] = diff_q1_q1t_a.mean()
-                ret_dict["debug/diff_q2_q2t_a"] = diff_q2_q2t_a.mean()
-                ret_dict["debug/diff_q1pt_qpt_std"] = diff_q1pt_qpt.std()
-                ret_dict["debug/diff_q2pt_qpt_std"] = diff_q2pt_qpt.std()
-                ret_dict["debug/diff_q1_q1t_a2_std"] = diff_q1_q1t_a2.std()
-                ret_dict["debug/diff_q2_q2t_a2_std"] = diff_q2_q2t_a2.std()
-                ret_dict["debug/diff_q1_q1t_pi_std"] = diff_q1_q1t_pi.std()
-                ret_dict["debug/diff_q2_q2t_pi_std"] = diff_q2_q2t_pi.std()
-                ret_dict["debug/diff_q1_q1t_a_std"] = diff_q1_q1t_a.std()
-                ret_dict["debug/diff_q2_q2t_a_std"] = diff_q2_q2t_a.std()
+                # ret_dict["debug/diff_q1"] = diff_q1_backup.mean()
+                # ret_dict["debug/diff_q1_std"] = diff_q1_backup.std()
+                # ret_dict["debug/diff_q2"] = diff_q2_backup.mean()
+                # ret_dict["debug/diff_q2_std"] = diff_q2_backup.std()
+                # ret_dict["debug/diff_r_q1"] = diff_q1_backup_r.mean()
+                # ret_dict["debug/diff_r_q1_std"] = diff_q1_backup_r.std()
+                # ret_dict["debug/diff_r_q2"] = diff_q2_backup_r.mean()
+                # ret_dict["debug/diff_r_q2_std"] = diff_q2_backup_r.std()
+                # ret_dict["debug/diff_q1pt_qpt"] = diff_q1pt_qpt.mean()
+                # ret_dict["debug/diff_q2pt_qpt"] = diff_q2pt_qpt.mean()
+                # ret_dict["debug/diff_q1_q1t_a2"] = diff_q1_q1t_a2.mean()
+                # ret_dict["debug/diff_q2_q2t_a2"] = diff_q2_q2t_a2.mean()
+                # ret_dict["debug/diff_q1_q1t_pi"] = diff_q1_q1t_pi.mean()
+                # ret_dict["debug/diff_q2_q2t_pi"] = diff_q2_q2t_pi.mean()
+                # ret_dict["debug/diff_q1_q1t_a"] = diff_q1_q1t_a.mean()
+                # ret_dict["debug/diff_q2_q2t_a"] = diff_q2_q2t_a.mean()
+                # ret_dict["debug/diff_q1pt_qpt_std"] = diff_q1pt_qpt.std()
+                # ret_dict["debug/diff_q2pt_qpt_std"] = diff_q2pt_qpt.std()
+                # ret_dict["debug/diff_q1_q1t_a2_std"] = diff_q1_q1t_a2.std()
+                # ret_dict["debug/diff_q2_q2t_a2_std"] = diff_q2_q2t_a2.std()
+                # ret_dict["debug/diff_q1_q1t_pi_std"] = diff_q1_q1t_pi.std()
+                # ret_dict["debug/diff_q2_q2t_pi_std"] = diff_q2_q2t_pi.std()
+                # ret_dict["debug/diff_q1_q1t_a_std"] = diff_q1_q1t_a.std()
+                # ret_dict["debug/diff_q2_q2t_a_std"] = diff_q2_q2t_a.std()
                 ret_dict["debug/r"] = r.detach().mean()
                 ret_dict["debug/r_std"] = r.detach().std()
                 ret_dict["debug/d"] = d.detach().mean()

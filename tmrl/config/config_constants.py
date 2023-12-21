@@ -156,7 +156,7 @@ MLP_LAYERNORM = MODEL_CONFIG["MLP_LAYERNORM"]
 ALG_CONFIG = TMRL_CONFIG["ALG"]
 if ALG_CONFIG["QUANTILES_NUMBER"] != "TQC" and ALG_CONFIG["QUANTILES_NUMBER"] > 1:
     ValueError("QUANTILES_NUMBER must be 1 if it is used with SAC")
-QUANTILES_NUMBER = 1 if ALG_CONFIG["QUANTILES_NUMBER"] != "TQC" else ALG_CONFIG["QUANTILES_NUMBER"]
+QUANTILES_NUMBER = ALG_CONFIG["QUANTILES_NUMBER"]
 N_STEPS = 1 if ALG_CONFIG["N_STEPS"] <= 0 else ALG_CONFIG["N_STEPS"]
 WEIGHT_CLIPPING_ENABLED = ALG_CONFIG["CLIPPING_WEIGHTS"]
 WEIGHT_CLIPPING_VALUE = 1.0 if not WEIGHT_CLIPPING_ENABLED else ALG_CONFIG["CLIP_WEIGHTS_VALUE"]
@@ -223,7 +223,7 @@ def create_config():
 
     config["REWARD_END_OF_TRACK"] = env_config["END_OF_TRACK_REWARD"]
     config["ALGORITHM"] = alg_config["ALGORITHM"]
-    config["QUANTILES_NUMBER"] = 1 if alg_config["QUANTILES_NUMBER"] != "TQC" else alg_config["QUANTILES_NUMBER"]
+    config["QUANTILES_NUMBER"] = alg_config["QUANTILES_NUMBER"]
     config["LEARN_ENTROPY_COEF"] = alg_config["LEARN_ENTROPY_COEF"]
     config["LR_ACTOR"] = alg_config["LR_ACTOR"]
     config["LR_CRITIC"] = alg_config["LR_CRITIC"]
@@ -240,6 +240,10 @@ def create_config():
     config["POLYAK"] = alg_config["POLYAK"]
     config["TARGET_ENTROPY"] = alg_config["TARGET_ENTROPY"]
     config["TOP_QUANTILES_TO_DROP"] = alg_config["TOP_QUANTILES_TO_DROP"]
+
+    if alg_config["QUANTILES_NUMBER"] != 1 and alg_config["ALGORITHM"] == "SAC":
+        ValueError("SAC can be only used if the QUANTILES_NUMBER equals to 1")
+
     config["QUANTILES_NUMBER"] = alg_config["QUANTILES_NUMBER"]
     config["R2D2_REWIND"] = alg_config["R2D2_REWIND"]
 
