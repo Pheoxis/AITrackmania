@@ -9,13 +9,14 @@ import custom.models.BestActorCriticTQC as tqc
 # import custom.models.MaybeBetterTQC as mtqc
 # import custom.models.BetterTQCmini as mini
 import custom.models.IMPALA as impala
+import custom.models.IMPALAwoImages as impalaWoImages
 from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
 from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
 from custom.custom_algorithms import TQCAgent as TQC_Agent
 from custom.custom_checkpoints import update_run_instance
 from custom.custom_memories import MemoryTMLidar, MemoryTMLidarProgress, get_local_buffer_sample_lidar, \
     get_local_buffer_sample_lidar_progress, get_local_buffer_sample_tm20_imgs, MemoryTMBest, \
-    get_local_buffer_sample_mobilenet, MemoryTMFull, MemoryR2D2
+    get_local_buffer_sample_mobilenet, MemoryTMFull, MemoryR2D2, MemoryR2D2woImages
 from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
     obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
 from custom.interfaces.TM2020InterfaceIMPALAwoImages import TM2020InterfaceIMPALAwoImages
@@ -69,12 +70,13 @@ else:
         TRAIN_MODEL = tqc.QRCNNActorCritic
         POLICY = tqc.SquashedActorQRCNN
     elif cfg.PRAGMA_MBEST_TQC:
-        assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
+        assert ALG_NAME in ("TQC", "SAC"), f"{ALG_NAME} is not implemented here."
         if cfg.USE_IMAGES:
             TRAIN_MODEL = impala.QRCNNActorCritic
             POLICY = impala.SquashedActorQRCNN
         else:
-            pass
+            TRAIN_MODEL = impalaWoImages.QRCNNActorCritic
+            POLICY = impalaWoImages.SquashedActorQRCNN
         # assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
         # TRAIN_MODEL = mini.QRCNNActorCritic
         # POLICY = mini.SquashedActorQRCNN
@@ -184,7 +186,10 @@ else:
     if cfg.PRAGMA_CUSTOM or cfg.PRAGMA_BEST or cfg.PRAGMA_BEST_TQC:
         MEM = MemoryTMBest
     elif cfg.PRAGMA_MBEST_TQC:
-        MEM = MemoryR2D2
+        if cfg.USE_IMAGES:
+            MEM = MemoryR2D2
+        else:
+            MEM = MemoryR2D2woImages
         # MEM = MemoryR2D2mini
     else:
         MEM = MemoryTMFull

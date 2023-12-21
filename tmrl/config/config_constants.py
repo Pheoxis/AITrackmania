@@ -88,7 +88,7 @@ CRC_DEBUG = False
 CRC_DEBUG_SAMPLES = 100  # Number of samples collected in CRC_DEBUG mode
 PROFILE_TRAINER = False  # Will profile each epoch in the Trainer when True
 SYNCHRONIZE_CUDA = False  # Set to True for profiling, False otherwise
-DEBUG_MODE = TMRL_CONFIG["DEBUG_MODE"] if "DEBUG_MODE" in TMRL_CONFIG.keys() else False
+DEBUG_MODE = TMRL_CONFIG["DEBUG_MODE"]
 
 # FILE SYSTEM: =================================================
 
@@ -142,21 +142,28 @@ MODEL_CONFIG = TMRL_CONFIG["MODEL"]
 SCHEDULER_CONFIG = MODEL_CONFIG["SCHEDULER"]
 NOISY_LINEAR_CRITIC = MODEL_CONFIG["NOISY_LINEAR_CRITIC"]
 NOISY_LINEAR_ACTOR = MODEL_CONFIG["NOISY_LINEAR_ACTOR"]
-DROPOUT = MODEL_CONFIG["DROPOUT"]
+OUTPUT_DROPOUT = MODEL_CONFIG["OUTPUT_DROPOUT"]
+RNN_DROPOUT = MODEL_CONFIG["RNN_DROPOUT"]
 CNN_FILTERS = MODEL_CONFIG["CNN_FILTERS"]
 CNN_OUTPUT_SIZE = MODEL_CONFIG["CNN_OUTPUT_SIZE"]
 RNN_LENS = MODEL_CONFIG["RNN_LENS"]
 RNN_SIZES = MODEL_CONFIG["RNN_SIZES"]
-MLP_BRANCH_SIZES = MODEL_CONFIG["MLP_BRANCH_SIZES"]
+API_MLP_SIZES = MODEL_CONFIG["API_MLP_SIZES"]
+API_LAYERNORM = MODEL_CONFIG["API_LAYERNORM"]
+MLP_LAYERNORM = MODEL_CONFIG["MLP_LAYERNORM"]
 
 # ALG CONFIG ============================
 ALG_CONFIG = TMRL_CONFIG["ALG"]
-N_STEPS = ALG_CONFIG["N_STEPS"]
+if ALG_CONFIG["QUANTILES_NUMBER"] != "TQC" and ALG_CONFIG["QUANTILES_NUMBER"] > 1:
+    ValueError("QUANTILES_NUMBER must be 1 if it is used with SAC")
+QUANTILES_NUMBER = ALG_CONFIG["QUANTILES_NUMBER"]
+N_STEPS = 1 if ALG_CONFIG["N_STEPS"] <= 0 else ALG_CONFIG["N_STEPS"]
 WEIGHT_CLIPPING_ENABLED = ALG_CONFIG["CLIPPING_WEIGHTS"]
-WEIGHT_CLIPPING_VALUE = ALG_CONFIG["CLIP_WEIGHTS_VALUE"]
+WEIGHT_CLIPPING_VALUE = 1.0 if not WEIGHT_CLIPPING_ENABLED else ALG_CONFIG["CLIP_WEIGHTS_VALUE"]
 ACTOR_WEIGHT_DECAY = ALG_CONFIG["ACTOR_WEIGHT_DECAY"]
 CRITIC_WEIGHT_DECAY = ALG_CONFIG["CRITIC_WEIGHT_DECAY"]
 POINTS_NUMBER = ALG_CONFIG["NUMBER_OF_POINTS"]
+ADAM_EPS = ALG_CONFIG["ADAM_EPS"]
 
 
 # CREATE CONFIG ===================================
@@ -192,15 +199,16 @@ def create_config():
     for index, size in enumerate(config["RNN_LENS"]):
         config[f"RNN_LEN{index}"] = size
 
-    config["MLP_BRANCH_SIZES"] = model_config["MLP_BRANCH_SIZES"]
+    config["API_MLP_SIZES"] = model_config["API_MLP_SIZES"]
 
-    for index, size in enumerate(config["MLP_BRANCH_SIZES"]):
-        config[f"MLP_BRANCH_SIZE{index}"] = size
+    for index, size in enumerate(config["API_MLP_SIZES"]):
+        config[f"API_MLP_SIZE{index}"] = size
 
     config["API_LAYERNORM"] = model_config["API_LAYERNORM"]
     config["NOISY_LINEAR_ACTOR"] = model_config["NOISY_LINEAR_ACTOR"]
     config["NOISY_LINEAR_CRITIC"] = model_config["NOISY_LINEAR_CRITIC"]
-    config["DROPOUT"] = model_config["DROPOUT"]
+    config["RNN_DROPOUT"] = model_config["RNN_DROPOUT"]
+    config["CNN_FILTERS"] = model_config["CNN_FILTERS"]
 
     config["MIN_NB_STEPS_BEFORE_FAILURE"] = env_config["MIN_NB_STEPS_BEFORE_FAILURE"]
     config["MAX_NB_STEPS_BEFORE_FAILURE"] = env_config["MAX_NB_STEPS_BEFORE_FAILURE"]
@@ -215,6 +223,7 @@ def create_config():
 
     config["REWARD_END_OF_TRACK"] = env_config["END_OF_TRACK_REWARD"]
     config["ALGORITHM"] = alg_config["ALGORITHM"]
+    config["QUANTILES_NUMBER"] = alg_config["QUANTILES_NUMBER"]
     config["LEARN_ENTROPY_COEF"] = alg_config["LEARN_ENTROPY_COEF"]
     config["LR_ACTOR"] = alg_config["LR_ACTOR"]
     config["LR_CRITIC"] = alg_config["LR_CRITIC"]
@@ -223,7 +232,7 @@ def create_config():
     config["ACTOR_WEIGHT_DECAY"] = alg_config["ACTOR_WEIGHT_DECAY"]
     config["CRITIC_WEIGHT_DECAY"] = alg_config["CRITIC_WEIGHT_DECAY"]
     config["CLIPPING_WEIGHTS"] = alg_config["CLIPPING_WEIGHTS"]
-    config["CLIP_WEIGHTS_VALUE"] = alg_config["CLIP_WEIGHTS_VALUE"]
+    config["CLIP_WEIGHTS_VALUE"] = 1.0 if not config["CLIPPING_WEIGHTS"] else alg_config["CLIP_WEIGHTS_VALUE"]
     config["POINTS_NUMBER"] = alg_config["NUMBER_OF_POINTS"]
 
     config["LR_ENTROPY"] = alg_config["LR_ENTROPY"]
@@ -231,10 +240,15 @@ def create_config():
     config["POLYAK"] = alg_config["POLYAK"]
     config["TARGET_ENTROPY"] = alg_config["TARGET_ENTROPY"]
     config["TOP_QUANTILES_TO_DROP"] = alg_config["TOP_QUANTILES_TO_DROP"]
+
+    if alg_config["QUANTILES_NUMBER"] != 1 and alg_config["ALGORITHM"] == "SAC":
+        ValueError("SAC can be only used if the QUANTILES_NUMBER equals to 1")
+
     config["QUANTILES_NUMBER"] = alg_config["QUANTILES_NUMBER"]
     config["R2D2_REWIND"] = alg_config["R2D2_REWIND"]
 
-    config["POINTS_NUMBER"] = 2
+    config["POINTS_NUMBER"] = alg_config["NUMBER_OF_POINTS"]
+    config["ADAM_EPS"] = alg_config["ADAM_EPS"]
 
     config["SCHEDULER_T_0"] = scheduler_config["T_0"]
     config["SCHEDULER_T_mult"] = scheduler_config["T_mult"]

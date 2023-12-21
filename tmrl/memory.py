@@ -267,6 +267,7 @@ class R2D2Memory(Memory, ABC):
                          device=device,
                          # info_index=info_index
                          )
+        self.rewards_index = 19 if cfg.USE_IMAGES else 18
         self.previous_episode = 0
         self.end_episodes_indices = []
         self.chosen_episode = 0
@@ -313,9 +314,8 @@ class R2D2Memory(Memory, ABC):
         return normalized_list
 
     def sample_indices(self):
-
-        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[19])
-        self.reward_sums = [self.data[19][index]['reward_sum'] for index in self.end_episodes_indices]
+        self.end_episodes_indices = self.find_zero_rewards_indices(self.data[self.rewards_index])
+        self.reward_sums = [self.data[self.rewards_index ][index]['reward_sum'] for index in self.end_episodes_indices]
         # print(self.end_episodes_indices)
         batch_size = self.batch_size
 
@@ -361,10 +361,9 @@ class R2D2Memory(Memory, ABC):
                         self.previous_episode = self.end_episodes_indices[previous_episode_index]
 
                 episode_length = self.chosen_episode - self.previous_episode
-                self.chosen_burn_in = random.randint(self.burn_ins[0], self.burn_ins[1])  # Losowanie burn-in
+                self.chosen_burn_in = random.randint(self.burn_ins[0], self.burn_ins[1])
 
-                if episode_length <= batch_size + self.chosen_burn_in:  # kiedy epizod jest krótszy od batch size
-                    # print("krótszy batch")
+                if episode_length <= batch_size + self.chosen_burn_in:
                     result = tuple(range(self.previous_episode, self.chosen_episode - 1))
                     # print(result)
                     return result
@@ -383,8 +382,7 @@ class R2D2Memory(Memory, ABC):
                 # self.cur_idx -= batch_size // 2
                 self.cur_idx -= int(batch_size * self.rewind)
 
-                if self.cur_idx + batch_size >= self.chosen_episode:  # ostatni batch epizodu
-                    # print("ostatni batch")
+                if self.cur_idx + batch_size >= self.chosen_episode:
                     self.isNewEpisode = True
 
                     result = tuple(range(self.chosen_episode - batch_size, self.chosen_episode - 1))
@@ -392,14 +390,13 @@ class R2D2Memory(Memory, ABC):
                     self.cur_idx = self.chosen_episode
                     return result
                 else:
-                    # print("kontynuacja batcha ")
                     self.isNewEpisode = False
                     result = tuple(range(self.cur_idx, self.cur_idx + batch_size))
                     # print(result)
                     self.cur_idx += batch_size
                     return result
 
-                    self.last_index = self.chosen_episode
+                    # self.last_index = self.chosen_episode
 
         while len(indices) < self.batch_size:
             random_index = random.randint(0, len(self) - 1)
@@ -415,9 +412,21 @@ class R2D2Memory(Memory, ABC):
 
         indices = tuple(indices)
 
+        if len(indices) != self.batch_size:
+            ValueError("Kamil R2D2 dalej nie działa :(")
+
         return indices
     # def sample_indices(self):
     #     return tuple(randint(0, len(self) - 1) for _ in range(self.batch_size))
+
+    def __len__(self):
+        if len(self.data) == 0:
+            return 0
+        res = len(self.data[0]) - self.min_samples - 1
+        if res < 0:
+            return 0
+        else:
+            return res
 
 
     def sample(self):
