@@ -31,6 +31,7 @@ class TM2020InterfaceIMPALA(TM2020Interface):
         self.cur_checkpoint = 0
         self.lap_reward = lap_reward
         self.checkpoint_reward = checkpoint_reward
+        self.points_number = cfg.POINTS_NUMBER
 
     def get_observation_space(self):
         # https://gymnasium.farama.org/api/spaces/
@@ -63,7 +64,7 @@ class TM2020InterfaceIMPALA(TM2020Interface):
 
         failure_counter = spaces.Box(low=0.0, high=15, shape=(1,))
 
-        next_checkpoints = spaces.Box(low=-100.0, high=100.0, shape=(4, ))
+        next_checkpoints = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number, ))
 
         if self.resize_to is not None:
             w, h = self.resize_to
@@ -153,7 +154,7 @@ class TM2020InterfaceIMPALA(TM2020Interface):
 
         race_progress = self.reward_function.compute_race_progress()
 
-        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, self.reward_function.n)
+        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, self.points_number)
 
         end_of_track = bool(data[9])
 
@@ -231,7 +232,7 @@ class TM2020InterfaceIMPALA(TM2020Interface):
         failure_counter = np.array([0.0])
         race_progress = 0.0
 
-        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, self.reward_function.n)
+        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, self.points_number)
 
         for _ in range(self.img_hist_len):
             self.img_hist.append(img)

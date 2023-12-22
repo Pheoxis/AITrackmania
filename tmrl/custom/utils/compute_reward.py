@@ -70,6 +70,7 @@ class RewardFunction:
         self.constant_penalty = constant_penalty
         self.lap_cur_cooldown = cfg.LAP_COOLDOWN
         self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
+        self.crash_cur_cooldown = cfg.CRASH_COOLDOWN
         self.new_lap = False
         self.near_finish = False
         self.new_checkpoint = False
@@ -89,8 +90,8 @@ class RewardFunction:
         self.max_value = cfg.MAX_NB_STEPS_BEFORE_FAILURE
         self.mid_value = (self.max_value + self.min_value) / 2
         self.amplitude = (self.max_value - self.min_value) / 2
-        self.oscillation_period = cfg.OSCILLATION_PERIOD  # oscillate every 50 iterations
-        self.index_divider = 4 * self.n
+        self.oscillation_period = cfg.OSCILLATION_PERIOD
+        self.index_divider = 100. / self.datalen
         print(f"n: {self.n}")
         self.furthest_race_progress = 0
 
@@ -163,7 +164,7 @@ class RewardFunction:
             # stop condition
             if index >= self.datalen or temp <= 0:
                 break
-        reward = (best_index - self.cur_idx) / self.index_divider
+        reward = (best_index - self.cur_idx) * self.index_divider  # * (1 + speed / 250.)
         if best_index == self.cur_idx:  # if the best index didn't change, we rewind (more Markovian reward)
             min_dist = np.inf
             index = self.cur_idx
@@ -203,12 +204,12 @@ class RewardFunction:
             self.new_checkpoint = True
 
         if self.new_lap and self.lap_cur_cooldown > 0:
-            reward += cfg.LAP_REWARD
+            reward += cfg.LAP_REWARD * self.lap_cur_cooldown / cfg.LAP_COOLDOWN
             self.lap_cur_cooldown -= 1
             print(f"lap reward added: {reward}")
 
         if self.new_checkpoint and self.checkpoint_cur_cooldown > 0:
-            reward += cfg.CHECKPOINT_REWARD
+            reward += cfg.CHECKPOINT_REWARD * self.checkpoint_cur_cooldown / cfg.CHECKPOINT_COOLDOWN
             self.checkpoint_cur_cooldown -= 1
             print(f"checkpoint reward added: {reward}")
 
@@ -231,7 +232,7 @@ class RewardFunction:
             reward += penalty
 
         if crashed:
-            reward -= round(abs(self.crash_penalty) * self.crash_counter ** (1. / 3), 4)
+            reward -= round(abs(self.crash_penalty) * self.crash_counter ** (1. / 3) * self.crash_cur_cooldown / cfg.CRASH_COOLDOWN, 6)
             self.crash_counter += 1
 
         if reward != 0.0:
@@ -275,11 +276,11 @@ class RewardFunction:
 
                     wandb.log(
                         {
-                            "Run reward": self.episode_reward,
-                            "Q1": q1_value, "Q2": q2_value, "Q3": q3_value, "mean": mean_value,
-                            "max": max_value, "min": min_value,
-                            "count": count_value, "std": std_value,
-                            "best race progress": self.furthest_race_progress
+                            "run/Run reward": self.episode_reward,
+                            "run/Q1": q1_value, "run/Q2": q2_value, "run/Q3": q3_value, "run/mean": mean_value,
+                            "run/max": max_value, "run/min": min_value,
+                            "run/count": count_value, "run/std": std_value,
+                            "run/best race progress": self.furthest_race_progress
                         }
                     )
                     self.send_reward.clear()

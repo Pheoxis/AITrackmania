@@ -1,4 +1,5 @@
 # standard library imports
+import datetime
 import time
 from dataclasses import dataclass
 
@@ -139,8 +140,8 @@ class TrainingOffline:
                 batch_index_checkpoints = [i * step_size for i in range(num_elements)]
 
                 if batch_index in batch_index_checkpoints:
-                    logging.info(f"batch {batch_index} out of {self.steps} has finished")
-                stats_training_dict = self.agent.train(self.epoch, batch, batch_index, len(self.memory))
+                    logging.info(f"batch {batch_index} out of {self.steps} has finished at: {datetime.datetime.now()}")
+                stats_training_dict = self.agent.train(batch, self.epoch, batch_index, len(self.memory))
 
                 t_train = time.time()
 
