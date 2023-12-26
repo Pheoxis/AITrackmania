@@ -90,8 +90,8 @@ class RewardFunction:
         self.max_value = cfg.MAX_NB_STEPS_BEFORE_FAILURE
         self.mid_value = (self.max_value + self.min_value) / 2
         self.amplitude = (self.max_value - self.min_value) / 2
-        self.oscillation_period = cfg.OSCILLATION_PERIOD  # oscillate every 50 iterations
-        self.index_divider = 4 * cfg.N_STEPS
+        self.oscillation_period = cfg.OSCILLATION_PERIOD
+        self.index_divider = 100. / self.datalen
         print(f"n: {self.n}")
         self.furthest_race_progress = 0
 
@@ -164,7 +164,7 @@ class RewardFunction:
             # stop condition
             if index >= self.datalen or temp <= 0:
                 break
-        reward = (best_index - self.cur_idx) / self.index_divider
+        reward = (best_index - self.cur_idx) * self.index_divider  # * (1 + speed / 250.)
         if best_index == self.cur_idx:  # if the best index didn't change, we rewind (more Markovian reward)
             min_dist = np.inf
             index = self.cur_idx
@@ -276,11 +276,11 @@ class RewardFunction:
 
                     wandb.log(
                         {
-                            "Run reward": self.episode_reward,
-                            "Q1": q1_value, "Q2": q2_value, "Q3": q3_value, "mean": mean_value,
-                            "max": max_value, "min": min_value,
-                            "count": count_value, "std": std_value,
-                            "best race progress": self.furthest_race_progress
+                            "run/Run reward": self.episode_reward,
+                            "run/Q1": q1_value, "run/Q2": q2_value, "run/Q3": q3_value, "run/mean": mean_value,
+                            "run/max": max_value, "run/min": min_value,
+                            "run/count": count_value, "run/std": std_value,
+                            "run/best race progress": self.furthest_race_progress
                         }
                     )
                     self.send_reward.clear()
