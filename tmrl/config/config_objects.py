@@ -5,7 +5,6 @@ import rtgym
 
 # local imports
 import config.config_constants as cfg
-import custom.models.BestActorCriticTQC as tqc
 # import custom.models.MaybeBetterTQC as mtqc
 # import custom.models.BetterTQCmini as mini
 import custom.models.IMPALA as impala
@@ -27,9 +26,7 @@ from custom.interfaces.TM2020InterfaceIMPALA import TM2020InterfaceIMPALA
 from custom.interfaces.TM2020InterfaceLidar import TM2020InterfaceLidar
 from custom.interfaces.TM2020InterfaceLidarProgress import TM2020InterfaceLidarProgress
 from custom.interfaces.TM2020InterfaceTrackMap import TM2020InterfaceTrackMap
-from custom.models.BestActorCritic import RCNNActorCritic, SquashedActorRCNN
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
-from custom.models.MobileNetActorCritic import MobileNetActorCritic, SquashedActorMobileNetV3
 from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
 from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
@@ -57,19 +54,7 @@ if cfg.PRAGMA_LIDAR:
         TRAIN_MODEL = MLPActorCritic if ALG_NAME == "SAC" else REDQMLPActorCritic
         POLICY = SquashedGaussianMLPActor
 else:
-    if cfg.PRAGMA_CUSTOM:
-        assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = MobileNetActorCritic
-        POLICY = SquashedActorMobileNetV3
-    elif cfg.PRAGMA_BEST:
-        assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = RCNNActorCritic
-        POLICY = SquashedActorRCNN
-    elif cfg.PRAGMA_BEST_TQC:
-        assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = tqc.QRCNNActorCritic
-        POLICY = tqc.SquashedActorQRCNN
-    elif cfg.PRAGMA_MBEST_TQC:
+    if cfg.PRAGMA_MBEST_TQC:
         assert ALG_NAME in ("TQC", "SAC"), f"{ALG_NAME} is not implemented here."
         if cfg.USE_IMAGES:
             TRAIN_MODEL = impala.QRCNNActorCritic

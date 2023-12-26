@@ -14,7 +14,7 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import config.config_constants as cfg
 # local imports
 from custom.models import MLPActorCritic, REDQMLPActorCritic
-from custom.models.BestActorCriticTQC import QRCNNActorCritic
+from custom.models.IMPALAwoImages import QRCNNActorCritic
 from custom.utils.nn import copy_shared, no_grad
 from training import TrainingAgent
 from util import cached_property
@@ -529,7 +529,7 @@ class TQCAgent(TrainingAgent):
     observation_space: type
     action_space: type
     device: str = None
-    model_cls: type = QRCNNActorCritic  # Replace with your QuantileActorCritic class
+    model_cls: type = QRCNNActorCritic# Replace with your QuantileActorCritic class
     gamma: float = 0.99
     polyak: float = 0.995
     alpha: float = 0.2
