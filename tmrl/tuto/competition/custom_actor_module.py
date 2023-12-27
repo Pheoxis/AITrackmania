@@ -818,7 +818,11 @@ training_cls = partial(
     update_model_interval=update_model_interval,
     max_training_steps_per_env_step=max_training_steps_per_env_step,
     start_training=start_training,
-    device=device_trainer)
+    device=device_trainer,
+    python_profiling=cfg.PROFILE_TRAINER,
+    pytorch_profiling=cfg.PYTORCH_PROFILER
+
+)
 
 # =====================================================================
 # RUN YOUR TRAINING PIPELINE

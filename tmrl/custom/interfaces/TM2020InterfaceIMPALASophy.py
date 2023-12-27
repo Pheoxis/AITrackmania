@@ -11,7 +11,7 @@ from custom.utils.control_mouse import mouse_save_replay_tm20
 import config.config_constants as cfg
 
 
-class TM2020InterfaceIMPALAwoImages(TM2020Interface):
+class TM2020InterfaceIMPALASophy(TM2020Interface):
     def __init__(
             self, img_hist_len=1, gamepad=False, min_nb_steps_before_failure=int(160),
             record=False, save_replay: bool = False,
@@ -64,11 +64,15 @@ class TM2020InterfaceIMPALAwoImages(TM2020Interface):
 
         failure_counter = spaces.Box(low=0.0, high=15, shape=(1,))
 
-        next_checkpoints = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number, ))
+        left_track = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number, ))
+
+        center_track = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number, ))
+
+        right_track = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number, ))
 
         return spaces.Tuple(
             (
-                next_checkpoints,
+                left_track, center_track, right_track,
                 speed, acceleration, jerk,
                 race_progress,
                 input_steer, input_gas_pedal, input_brake,
@@ -123,7 +127,7 @@ class TM2020InterfaceIMPALAwoImages(TM2020Interface):
 
         race_progress = self.reward_function.compute_race_progress()
 
-        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, self.points_number)
+        left_track, center_track, right_track = self.reward_function.get_track_info(pos, self.points_number)
 
         end_of_track = bool(data[9])
 
@@ -151,7 +155,9 @@ class TM2020InterfaceIMPALAwoImages(TM2020Interface):
             failure_counter
         ]
 
-        total_obs = [next_checkpoints] + observation
+        track_info = [left_track + center_track + right_track]
+
+        total_obs = track_info + observation
 
         total_obs[0] = np.array(total_obs[0])
 
@@ -192,7 +198,7 @@ class TM2020InterfaceIMPALAwoImages(TM2020Interface):
         failure_counter = np.array([0.0])
         race_progress = 0.0
 
-        next_checkpoints = self.reward_function.get_n_next_checkpoints_xy(pos, self.points_number)
+        left_track, center_track, right_track = self.reward_function.get_track_info(pos, self.points_number)
 
         observation = [
             speed, acceleration, jerk,
@@ -204,7 +210,9 @@ class TM2020InterfaceIMPALAwoImages(TM2020Interface):
             failure_counter
         ]
 
-        total_obs = [next_checkpoints] + observation
+        track_info = [left_track + center_track + right_track]
+
+        total_obs = track_info + observation
 
         total_obs[0] = np.array(total_obs[0])
 

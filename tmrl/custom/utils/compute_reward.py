@@ -54,6 +54,20 @@ class RewardFunction:
             with open(reward_data_path, 'rb') as f:
                 self.data = pickle.load(f)
 
+        if not os.path.exists(cfg.TRACK_PATH_LEFT):
+            logging.debug(f" reward not found at path:{cfg.TRACK_PATH_LEFT}")
+            self.left_track = np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])  # dummy reward
+        else:
+            with open(cfg.TRACK_PATH_LEFT, 'rb') as f:
+                self.left_track = pickle.load(f)
+
+        if not os.path.exists(cfg.TRACK_PATH_RIGHT):
+            logging.debug(f" reward not found at path:{cfg.TRACK_PATH_RIGHT}")
+            self.right_track = np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])  # dummy reward
+        else:
+            with open(cfg.TRACK_PATH_RIGHT, 'rb') as f:
+                self.right_track = pickle.load(f)
+
         self.cur_idx = 0
         self.prev_idx = 0
         self.nb_obs_forward = nb_obs_forward
@@ -66,7 +80,7 @@ class RewardFunction:
         self.datalen = len(self.data)
         # self.survive_reward = 0.5
         self.crash_penalty = crash_penalty
-        self.crash_counter = 1
+        # self.crash_counter = 1
         self.constant_penalty = constant_penalty
         self.lap_cur_cooldown = cfg.LAP_COOLDOWN
         self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
@@ -84,10 +98,10 @@ class RewardFunction:
         self.cooldown = self.window_size // 4
         self.change_cooldown = self.cooldown
         self.average_distance = self.calculate_average_distance()
-        self.n = max(1, min(len(self.data), int(0.75 / max(self.average_distance, 0.01))))  # intervals of ~0.75m
+        self.n = max(1, min(len(self.data), int(10.25 / max(self.average_distance, 0.01))))  # intervals of ~10.25m
         self.i = 0
-        self.min_value = cfg.MIN_NB_STEPS_BEFORE_FAILURE
-        self.max_value = cfg.MAX_NB_STEPS_BEFORE_FAILURE
+        self.min_value = cfg.MIN_NB_ZERO_REW_BEFORE_FAILURE
+        self.max_value = cfg.MAX_NB_ZERO_REW_BEFORE_FAILURE
         self.mid_value = (self.max_value + self.min_value) / 2
         self.amplitude = (self.max_value - self.min_value) / 2
         self.oscillation_period = cfg.OSCILLATION_PERIOD
@@ -134,6 +148,30 @@ class RewardFunction:
                 route_to_next_poses.append((self.data[pos_index][i] - pos[i]) * 10.)
 
         return route_to_next_poses
+
+    def get_track_info(self, pos, points_number):
+        next_indices = [self.cur_idx + i * self.n for i in range(1, points_number + 1)]
+        left_track_positions, center_track_positions, right_track_positions = [], [], []
+        for i in range(len(next_indices)):
+            if next_indices[i] >= len(self.data):
+                next_indices[i] = len(self.data) - 1
+
+        for pos_index in next_indices:
+            for i in (0, -1):
+                left = self.left_track[pos_index][i]
+                right = self.right_track[pos_index][i]
+
+                center = (left + right) / 2.
+
+                left_track_positions.append(left - pos[i])
+                center_track_positions.append(center - pos[i])
+                right_track_positions.append(right - pos[i])
+
+                # left_track_positions.append((self.data[pos_index][i] - pos[i]))
+                # left_track_positions.append((self.data[pos_index][i] - pos[i]))
+                # left_track_positions.append((self.data[pos_index][i] - pos[i]))
+
+        return left_track_positions, center_track_positions, right_track_positions
 
     def calculate_average_distance(self):
         # Calculate the Euclidean distance between consecutive points in the trajectory
@@ -232,10 +270,10 @@ class RewardFunction:
             reward += penalty
 
         if crashed:
-            reward -= round(abs(self.crash_penalty) * self.crash_counter ** (1. / 3) * self.crash_cur_cooldown / cfg.CRASH_COOLDOWN, 6)
-            self.crash_counter += 1
+            reward -= abs(self.crash_penalty)
+            # self.crash_counter += 1
 
-        if reward != 0.0:
+        if self.episode_reward != 0.0:
             reward -= abs(self.constant_penalty)
 
         # clipping reward (maps values above 6 and below -6 to 1 and -1)
@@ -258,8 +296,9 @@ class RewardFunction:
                 # wandb.log({"Run reward": self.reward_sum})
                 # self.change_min_nb_steps_before_failure()
                 self.i = self.i + 1
-                self.min_nb_steps_before_failure = int(self.mid_value + self.amplitude * np.sin(2 * np.pi * self.i / self.oscillation_period))
-                print(f"min_nb_steps_before_failure: {self.min_nb_steps_before_failure}")
+                self.nb_zero_rew_before_failure = int(
+                    self.mid_value + self.amplitude * np.sin(2 * np.pi * self.i / self.oscillation_period))
+                print(f"nb_zero_rew_before_failure: {self.nb_zero_rew_before_failure}")
                 if cfg.WANDB_DEBUG_REWARD:
                     send_reward_df = pd.DataFrame({"Reward": self.send_reward})
                     summary_stats = send_reward_df.describe()
@@ -335,7 +374,7 @@ class RewardFunction:
         self.step_counter = 0
         self.failure_counter = 0
         self.episode_reward = 0.0
-        self.crash_counter = 1
+        # self.crash_counter = 1
         self.lap_cur_cooldown = cfg.LAP_COOLDOWN
         self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
         self.furthest_race_progress = 0

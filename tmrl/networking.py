@@ -12,6 +12,7 @@ from os.path import exists
 
 # third-party imports
 import numpy as np
+import torch
 from requests import get
 from tlspyo import Relay, Endpoint
 
@@ -267,19 +268,29 @@ def iterate_epochs_tm(run_cls,
                 run_instance = updater_fn(run_instance, run_cls)
                 logging.info(f"Checkpoint updated in {time.time() - t1} seconds.")
 
+        # profiler = torch.profiler.profile(
+        #         schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1),
+        #         on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/tmrl'),
+        #         record_shapes=True,
+        #         profile_memory=True,
+        #         with_stack=True)
+        # profiler.start()
+
         while run_instance.epoch < run_instance.epochs:
             # time.sleep(1)  # on network file systems writing files is asynchronous and we need to wait for sync
-            yield run_instance.run_epoch(
-                interface=interface)  # yield stats data frame (this makes this function a generator)
+            yield run_instance.run_epoch(interface=interface)  # yield stats data frame
+            # (this makes this function a generator)
+            # profiler.step()
             if run_instance.epoch % epochs_between_checkpoints == 0:
                 logging.info(f" saving checkpoint...")
                 t1 = time.time()
                 dump_run_instance_fn(run_instance, checkpoint_path)
                 logging.info(f" saved checkpoint in {time.time() - t1} seconds.")
-                # we delete and reload the run_instance from disk to ensure the exact same code runs regardless of interruptions
-                # del run_instance
-                # gc.collect()  # garbage collection
-                # run_instance = load_run_instance_fn(checkpoint_path)
+        # profiler.stop()
+        # we delete and reload the run_instance from disk to ensure the exact same code runs regardless of interruptions
+        # del run_instance
+        # gc.collect()  # garbage collection
+        # run_instance = load_run_instance_fn(checkpoint_path)
 
     finally:
         if checkpoint_path.endswith("_remove_on_exit") and exists(checkpoint_path):

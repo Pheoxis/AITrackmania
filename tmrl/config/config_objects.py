@@ -5,7 +5,6 @@ import rtgym
 
 # local imports
 import config.config_constants as cfg
-import custom.models.BestActorCriticTQC as tqc
 # import custom.models.MaybeBetterTQC as mtqc
 # import custom.models.BetterTQCmini as mini
 import custom.models.IMPALA as impala
@@ -19,6 +18,7 @@ from custom.custom_memories import MemoryTMLidar, MemoryTMLidarProgress, get_loc
     get_local_buffer_sample_mobilenet, MemoryTMFull, MemoryR2D2, MemoryR2D2woImages
 from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
     obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
+from custom.interfaces.TM2020InterfaceIMPALASophy import TM2020InterfaceIMPALASophy
 from custom.interfaces.TM2020InterfaceIMPALAwoImages import TM2020InterfaceIMPALAwoImages
 # from custom.interfaces.TM2020InterfaceTQC import TM2020InterfaceTQC
 from custom.interfaces.TM2020Interface import TM2020Interface
@@ -27,9 +27,7 @@ from custom.interfaces.TM2020InterfaceIMPALA import TM2020InterfaceIMPALA
 from custom.interfaces.TM2020InterfaceLidar import TM2020InterfaceLidar
 from custom.interfaces.TM2020InterfaceLidarProgress import TM2020InterfaceLidarProgress
 from custom.interfaces.TM2020InterfaceTrackMap import TM2020InterfaceTrackMap
-from custom.models.BestActorCritic import RCNNActorCritic, SquashedActorRCNN
 from custom.models.MLPActorCritic import MLPActorCritic, SquashedGaussianMLPActor
-from custom.models.MobileNetActorCritic import MobileNetActorCritic, SquashedActorMobileNetV3
 from custom.models.REDQMLPActorCritic import REDQMLPActorCritic
 from custom.models.RNNActorCritic import RNNActorCritic, SquashedGaussianRNNActor
 from custom.models.VanillaCNNActorCritic import VanillaCNNActorCritic, SquashedGaussianVanillaCNNActor
@@ -57,19 +55,7 @@ if cfg.PRAGMA_LIDAR:
         TRAIN_MODEL = MLPActorCritic if ALG_NAME == "SAC" else REDQMLPActorCritic
         POLICY = SquashedGaussianMLPActor
 else:
-    if cfg.PRAGMA_CUSTOM:
-        assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = MobileNetActorCritic
-        POLICY = SquashedActorMobileNetV3
-    elif cfg.PRAGMA_BEST:
-        assert ALG_NAME == "SAC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = RCNNActorCritic
-        POLICY = SquashedActorRCNN
-    elif cfg.PRAGMA_BEST_TQC:
-        assert ALG_NAME == "TQC", f"{ALG_NAME} is not implemented here."
-        TRAIN_MODEL = tqc.QRCNNActorCritic
-        POLICY = tqc.SquashedActorQRCNN
-    elif cfg.PRAGMA_MBEST_TQC:
+    if cfg.PRAGMA_MBEST_TQC:
         assert ALG_NAME in ("TQC", "SAC"), f"{ALG_NAME} is not implemented here."
         if cfg.USE_IMAGES:
             TRAIN_MODEL = impala.QRCNNActorCritic
@@ -107,12 +93,19 @@ else:
             )
         else:
             INT = partial(
-                TM2020InterfaceIMPALAwoImages, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
+                TM2020InterfaceIMPALASophy, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
                 grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
                 crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
                 checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
                 min_nb_steps_before_failure=cfg.MIN_NB_STEPS_BEFORE_FAILURE
             )
+            # INT = partial(
+            #     TM2020InterfaceIMPALAwoImages, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
+            #     grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
+            #     crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
+            #     checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
+            #     min_nb_steps_before_failure=cfg.MIN_NB_STEPS_BEFORE_FAILURE
+            # )
         # INT = partial(
         #     TM2020InterfaceTQCmini, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
         #     grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
@@ -279,7 +272,8 @@ if cfg.PRAGMA_LIDAR:  # lidar
         update_model_interval=MODEL_CONFIG["UPDATE_MODEL_INTERVAL"],
         update_buffer_interval=MODEL_CONFIG["UPDATE_BUFFER_INTERVAL"],
         max_training_steps_per_env_step=MODEL_CONFIG["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"],
-        profiling=cfg.PROFILE_TRAINER,
+        python_profiling=cfg.PROFILE_TRAINER,
+        pytorch_profiling=cfg.PYTORCH_PROFILER,
         training_agent_cls=AGENT,
         agent_scheduler=None,  # sac_v2_entropy_scheduler
         start_training=MODEL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"])  # set this > 0 to start from an existing
@@ -295,7 +289,8 @@ else:  # images
         update_model_interval=MODEL_CONFIG["UPDATE_MODEL_INTERVAL"],
         update_buffer_interval=MODEL_CONFIG["UPDATE_BUFFER_INTERVAL"],
         max_training_steps_per_env_step=MODEL_CONFIG["MAX_TRAINING_STEPS_PER_ENVIRONMENT_STEP"],
-        profiling=cfg.PROFILE_TRAINER,
+        python_profiling=cfg.PROFILE_TRAINER,
+        pytorch_profiling=cfg.PYTORCH_PROFILER,
         training_agent_cls=AGENT,
         agent_scheduler=None,  # sac_v2_entropy_scheduler
         start_training=MODEL_CONFIG["ENVIRONMENT_STEPS_BEFORE_TRAINING"])

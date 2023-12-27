@@ -17,6 +17,7 @@ import numpy as np
 # local imports
 from util import collate_torch
 import config.config_constants as cfg
+
 __docformat__ = "google"
 
 
@@ -315,29 +316,53 @@ class R2D2Memory(Memory, ABC):
 
     def sample_indices(self):
         self.end_episodes_indices = self.find_zero_rewards_indices(self.data[self.rewards_index])
-        self.reward_sums = [self.data[self.rewards_index ][index]['reward_sum'] for index in self.end_episodes_indices]
+        self.reward_sums = [self.data[self.rewards_index][index]['reward_sum'] for index in self.end_episodes_indices]
         # print(self.end_episodes_indices)
         batch_size = self.batch_size
 
         if len(self.end_episodes_indices) == 0:
             if self.cur_idx == 0:
+                # print("batch 1")
                 self.cur_idx += int(batch_size * self.rewind)
                 # self.cur_idx += batch_size // 2
-                pom = tuple(range(0, self.cur_idx))
-                # print(pom)
-                return pom
+                result = tuple(range(0, self.cur_idx))
+                # print(result)
+                # if len(result) != self.batch_size:
+                #     # print(f"result {result}")
+                #     # print(f"batch size{len(result)}")
+                #     raise ValueError(f"Kamil R2D2 dalej nie działa 1")
+                # for idx in result[:-1]:
+                #     if idx in self.end_episodes_indices:
+                #         raise ValueError("nie zgadza się 1 ")
+                return result
             else:
                 if self.cur_idx + batch_size < len(self):
-                    pom = tuple(range(self.cur_idx, self.cur_idx + batch_size))
+                    # print("batch 2")
+                    result = tuple(range(self.cur_idx, self.cur_idx + batch_size))
                     # self.cur_idx += batch_size // 2
                     self.cur_idx += int(batch_size * self.rewind)
-                    # print(pom)
-                    return pom
+                    # print(result)
+                    # if len(result) != self.batch_size:
+                    #     # print(f"result {result}")
+                    #     # print(f"batch size{len(result)}")
+                    #     raise ValueError(f"Kamil R2D2 dalej nie działa 2")
+                    # for idx in result[:-1]:
+                    #     if idx in self.end_episodes_indices:
+                    #         raise ValueError("nie zgadza się 2")
+                    return result
                 else:
-                    pom = tuple(range(len(self) - batch_size, len(self) - 1))
-                    # print(pom)
+                    # print("batch 3")
+                    result = tuple(range(len(self) - batch_size, len(self) - 1))
+                    # print(result)
                     self.cur_idx = 0
-                    return pom
+                    # if len(result) != self.batch_size:
+                    #     # print(f"result {result}")
+                    #     # print(f"batch size{len(result)}")
+                    #     raise ValueError(f"Kamil R2D2 dalej nie działa 3 ")
+                    # for idx in result[:-1]:
+                    #     if idx in self.end_episodes_indices:
+                    #         raise ValueError("nie zgadza się 3")
+                    return result
         else:
             if self.isNewEpisode:
                 if len(self.reward_sums) == 1:
@@ -364,60 +389,84 @@ class R2D2Memory(Memory, ABC):
                 self.chosen_burn_in = random.randint(self.burn_ins[0], self.burn_ins[1])
 
                 if episode_length <= batch_size + self.chosen_burn_in:
-                    result = tuple(range(self.previous_episode, self.chosen_episode - 1))
-                    # print(result)
+                    # print("batch 4")
+                    range_length = min(batch_size, episode_length - self.chosen_burn_in)
+
+                    # Calculate the start index ensuring it doesn't go below 0
+                    start_idx = max(self.previous_episode, self.chosen_episode - range_length)
+
+                    # Calculate the end index ensuring it doesn't exceed the chosen episode
+                    end_idx = min(self.chosen_episode - 1, start_idx + range_length)
+
+                    # Adjust the start index if the range is shorter than batch_size
+                    if end_idx - start_idx < batch_size:
+                        start_idx = max(0, end_idx - batch_size)
+
+                    result = tuple(range(start_idx, end_idx))
+                    # for idx in result[:-1]:
+                    #     if idx in self.end_episodes_indices:
+                    #         raise ValueError("nie zgadza się 4 ")
+                    # # print(result)
+                    # if len(result) != self.batch_size:
+                    #     # print(f"result {result}")
+                    #     # print(f"batch size{len(result)}")
+                    #     raise ValueError(f"Kamil R2D2 dalej nie działa 4")
                     return result
                 else:
-                    # print("pierwszy batch")
+                    # print("batch 5")
                     if self.previous_episode < 0:
                         self.previous_episode = 0
 
                     self.cur_idx = self.previous_episode + self.chosen_burn_in
                     result = tuple(range(self.cur_idx, self.cur_idx + batch_size))
+                    # for idx in result[:-1]:
+                    #     if idx in self.end_episodes_indices:
+                    #         raise ValueError("nie zgadza się 5 ")
                     self.cur_idx += batch_size
                     # print(result)
                     self.isNewEpisode = False
+                    # if len(result) != self.batch_size:
+                    #     # print(f"result {result}")
+                    #     # print(f"batch size{len(result)}")
+                    #     raise ValueError(f"Kamil R2D2 dalej nie działa 5")
                     return result
             else:
+                # print("batch 6")
+                # print(f"end of ep {self.end_episodes_indices}")
+
                 # self.cur_idx -= batch_size // 2
                 self.cur_idx -= int(batch_size * self.rewind)
 
                 if self.cur_idx + batch_size >= self.chosen_episode:
                     self.isNewEpisode = True
 
-                    result = tuple(range(self.chosen_episode - batch_size, self.chosen_episode - 1))
+                    result = tuple(range(self.chosen_episode - batch_size, self.chosen_episode))
+                    # for idx in result[:-1]:
+                    #     if idx in self.end_episodes_indices:
+                    #         raise ValueError("nie zgadza się 6 ")
                     # print(result)
                     self.cur_idx = self.chosen_episode
+                    # if len(result) != self.batch_size:
+                    #     # print(f"result {result}")
+                    #     # print(f"batch size {len(result)}")
+                    #     raise ValueError("Kamil R2D2 dalej nie działa 6 ")
                     return result
                 else:
+                    # print("batch 7")
+                    # print(f"end of ep {self.end_episodes_indices}")
                     self.isNewEpisode = False
                     result = tuple(range(self.cur_idx, self.cur_idx + batch_size))
+                    # for idx in result[:-1]:
+                    #     if idx in self.end_episodes_indices:
+                    #         raise ValueError("nie zgadza się 7 ")
                     # print(result)
                     self.cur_idx += batch_size
+
+                    # if len(result) != self.batch_size:
+                    #     print(f"result {result}")
+                    #     print(f"batch size{len(result)}")
+                    #     raise ValueError(f"Kamil R2D2 dalej nie działa 7")
                     return result
-
-                    # self.last_index = self.chosen_episode
-
-        while len(indices) < self.batch_size:
-            random_index = random.randint(0, len(self) - 1)
-            indices.append(random_index)
-
-        while len(indices) > self.batch_size:
-            indices.pop()
-
-        if indices is None:
-            raise Exception("Indices cannot be None!")
-        # if len(indices) < self.batch_size - 1:
-        #     raise Exception("Indices cannot be less!")
-
-        indices = tuple(indices)
-
-        if len(indices) != self.batch_size:
-            ValueError("Kamil R2D2 dalej nie działa :(")
-
-        return indices
-    # def sample_indices(self):
-    #     return tuple(randint(0, len(self) - 1) for _ in range(self.batch_size))
 
     def __len__(self):
         if len(self.data) == 0:
@@ -427,7 +476,6 @@ class R2D2Memory(Memory, ABC):
             return 0
         else:
             return res
-
 
     def sample(self):
         indices = self.sample_indices()

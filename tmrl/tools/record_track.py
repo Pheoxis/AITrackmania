@@ -1,4 +1,5 @@
 # standard library imports
+import os
 import pickle
 import time
 
@@ -14,14 +15,11 @@ import config.config_constants as cfg
 from custom.utils.tools import TM2020OpenPlanetClient
 import logging
 
-PATH_REWARD = cfg.REWARD_PATH
-DATASET_PATH = cfg.DATASET_PATH
 
-
-def record_reward_dist(path_reward=PATH_REWARD):
+def record_track(path_track=cfg.TRACK_PATH_LEFT):
     positions = []
     client = TM2020OpenPlanetClient()
-    path = path_reward
+    path = path_track
 
     is_recording = False
     while True:
@@ -37,7 +35,7 @@ def record_reward_dist(path_reward=PATH_REWARD):
                 positions = np.array(positions)
 
                 final_positions = [positions[0]]
-                dist_between_points = 1.05
+                dist_between_points = 0.85
                 j = 1
                 move_by = dist_between_points
                 pt1 = final_positions[-1]
@@ -54,14 +52,16 @@ def record_reward_dist(path_reward=PATH_REWARD):
                         move_by = dst  # remaining distance
 
                 final_positions = np.array(final_positions)
-                upsampled_arr = interp_points_with_cubic_spline(final_positions, data_density=3)
+                upsampled_arr = interp_points_with_cubic_spline(final_positions)
                 spaced_points = space_points(upsampled_arr)
+                smoothed_points = smooth_points(spaced_points)
                 print(f"final_positions: {final_positions}", end="\n\n")
                 print(f"upsampled_arr: {upsampled_arr}", end="\n\n")
                 print(f"spaced_points: {spaced_points}", end="\n\n")
-                logging.info(f"Final number of checkpoints in the reward function: {len(spaced_points)}")
+                print(f"smoothed_points: {smoothed_points}", end="\n\n")
+                logging.info(f"Final number of checkpoints of recorded track: {len(smoothed_points)}")
 
-                pickle.dump(spaced_points, open(path, "wb"))
+                pickle.dump(smoothed_points, open(path, "wb"))
                 logging.info(f"All done")
                 return
             else:
@@ -71,6 +71,8 @@ def record_reward_dist(path_reward=PATH_REWARD):
 
 
 def space_points(points):
+    with open(cfg.REWARD_PATH, 'rb') as f:
+        data = pickle.load(f)
     # Extract x, y, and z coordinates from the input points
     x = points[:, 0]
     y = points[:, 1]
@@ -87,7 +89,8 @@ def space_points(points):
     cs_z = CubicSpline(cumulative_distances, z)
 
     # Define the desired number of points (same as the input list)
-    desired_num_points = len(points)
+    # desired_num_points = len(points)
+    desired_num_points = len(data)
 
     # Generate evenly spaced points along the spline with the desired number of points
     new_distances = np.linspace(0, cumulative_distances[-1], desired_num_points)
@@ -110,12 +113,19 @@ def space_points(points):
     return new_points
 
 
-def interp_points_with_cubic_spline(sub_array, data_density):
+def interp_points_with_cubic_spline(sub_array, data_density=3):
     original_x, original_y, original_z = sub_array.T
 
     # Calculate the new x-values based on data density (e.g., double the points)
     original_i = np.arange(0, int(data_density * len(original_x)), step=data_density)
+
     new_i = np.arange(0, int(data_density * len(original_x) - 1))
+
+    print("Original i:", len(original_i))
+    print("Original x:", len(original_x))
+    print("Original y:", len(original_y))
+    print("Original z:", len(original_z))
+    print("new_i:", len(new_i))
 
     # Perform cubic spline interpolation for each vector (x, y, z)
     cs_x = CubicSpline(original_i, original_x)
@@ -177,4 +187,12 @@ def line(pt1, pt2, dist):
 
 
 if __name__ == "__main__":
-    record_reward_dist(path_reward=PATH_REWARD)
+    if not os.path.exists(cfg.REWARD_PATH):
+        logging.debug(f" reward not found at path:{cfg.REWARD_PATH}")
+    which_track = input("Choose which track do you want to record [left/right] [l/r]: ").lower()
+    assert which_track in ("l", "r", "right", "left"), "Input must be left, right, l or r"
+    print("Press \"e\" if you are ready do record track")
+    if which_track in ("l", "left"):
+        record_track(path_track=cfg.TRACK_PATH_LEFT)
+    elif which_track in ("r", "right"):
+        record_track(path_track=cfg.TRACK_PATH_RIGHT)

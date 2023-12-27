@@ -6,11 +6,12 @@ from dataclasses import dataclass
 # third-party imports
 import torch
 from pandas import DataFrame
-
+import contextlib
 # local imports
 from util import pandas_dict
 
 import logging
+
 logging.basicConfig(level=logging.INFO)
 __docformat__ = "google"
 
@@ -33,7 +34,7 @@ class TrainingOffline:
         max_training_steps_per_env_step (float): training will pause when above this ratio
         sleep_between_buffer_retrieval_attempts (float): algorithm will sleep for this amount of time when waiting for
         needed incoming samples
-        profiling (bool): if True, run_epoch will be profiled and the profiling will be printed at the end of each epoch
+        python_profiling (bool): if True, run_epoch will be profiled and the profiling will be printed at the end of each epoch
         agent_scheduler (callable): if not None, must be of the form f(Agent, epoch), called at the beginning of each epoch
         start_training (int): minimum number of samples in the replay buffer before starting training
         device (str): device on which the memory will collate training samples
@@ -50,13 +51,13 @@ class TrainingOffline:
     max_training_steps_per_env_step: float = 1.0  # training will pause when above this ratio
     sleep_between_buffer_retrieval_attempts: float = 1.0  # algorithm will sleep for this amount of time when waiting
     # for needed incoming samples
-    profiling: bool = False  # if True, run_epoch will be profiled and the profiling will be printed at the end of
-    # each epoch
     agent_scheduler: callable = None  # if not None, must be of the form f(Agent, epoch), called at the beginning of
     # each epoch
     start_training: int = 0  # minimum number of samples in the replay buffer before starting training
     device: str = None  # device on which the model of the TrainingAgent will live
-
+    python_profiling: bool = False  # if True, run_epoch will be profiled and the profiling will be printed at the end
+    # of each epoch
+    pytorch_profiling: bool = False
     total_updates = 0
 
     def __post_init__(self):
@@ -91,11 +92,63 @@ class TrainingOffline:
                     time.sleep(self.sleep_between_buffer_retrieval_attempts)
             logging.info(f" Resuming training")
 
+    def run_round(self, interface, stats_training, t_sample_prev):
+        for batch_index, batch in enumerate(self.memory):  # this samples a fixed number of batches
+
+            t_sample = time.time()
+
+            if self.total_updates % self.update_buffer_interval == 0:
+                # retrieve local buffer in replay memory
+                self.update_buffer(interface)
+                self.memory.end_episodes_indices = self.memory.find_zero_rewards_indices(
+                    self.memory.data[self.memory.rewards_index]
+                )
+                self.memory.reward_sums = [
+                    self.memory.data[self.memory.rewards_index][index]['reward_sum'] for index in
+                    self.memory.end_episodes_indices
+                ]
+
+            t_update_buffer = time.time()
+
+            if self.total_updates == 0:
+                logging.info(f"starting training")
+
+            num_elements = 5
+
+            # Calculate the step size between elements
+            step_size = int(self.steps / (num_elements - 1))
+
+            # Create a list of five equally spaced elements
+            batch_index_checkpoints = [i * step_size for i in range(num_elements)]
+
+            if batch_index in batch_index_checkpoints:
+                logging.info(
+                    f"batch {batch_index} out of {self.steps} has finished at: {datetime.datetime.now()}")
+
+            stats_training_dict = self.agent.train(batch, self.epoch, batch_index, len(self.memory))
+
+            t_train = time.time()
+
+            stats_training_dict["return_test"] = self.memory.stat_test_return
+            stats_training_dict["return_train"] = self.memory.stat_train_return
+            stats_training_dict["episode_length_test"] = self.memory.stat_test_steps
+            stats_training_dict["episode_length_train"] = self.memory.stat_train_steps
+            stats_training_dict["sampling_duration"] = t_sample - t_sample_prev
+            stats_training_dict["training_step_duration"] = t_train - t_update_buffer
+            stats_training += stats_training_dict,
+            self.total_updates += 1
+            if self.total_updates % self.update_model_interval == 0:
+                # broadcast model weights
+                interface.broadcast_model(self.agent.get_actor())
+            self.check_ratio(interface)
+
+            t_sample_prev = time.time()
+
     def run_epoch(self, interface):
         stats = []
         state = None
 
-        if self.agent_scheduler is not None:
+        if self.agent_scheduler is not None and callable(self.agent_scheduler):
             self.agent_scheduler(self.agent, self.epoch)
 
         for rnd in range(self.rounds):
@@ -109,7 +162,7 @@ class TrainingOffline:
             self.check_ratio(interface)
             t1 = time.time()
 
-            if self.profiling:
+            if self.python_profiling:
                 from pyinstrument import Profiler
                 pro = Profiler()
                 pro.start()
@@ -118,47 +171,7 @@ class TrainingOffline:
 
             t_sample_prev = t2
 
-            for batch_index, batch in enumerate(self.memory):  # this samples a fixed number of batches
-
-                t_sample = time.time()
-
-                if self.total_updates % self.update_buffer_interval == 0:
-                    # retrieve local buffer in replay memory
-                    self.update_buffer(interface)
-
-                t_update_buffer = time.time()
-
-                if self.total_updates == 0:
-                    logging.info(f"starting training")
-
-                num_elements = 5
-
-                # Calculate the step size between elements
-                step_size = int(self.steps / (num_elements - 1))
-
-                # Create a list of five equally spaced elements
-                batch_index_checkpoints = [i * step_size for i in range(num_elements)]
-
-                if batch_index in batch_index_checkpoints:
-                    logging.info(f"batch {batch_index} out of {self.steps} has finished at: {datetime.datetime.now()}")
-                stats_training_dict = self.agent.train(batch, self.epoch, batch_index, len(self.memory))
-
-                t_train = time.time()
-
-                stats_training_dict["return_test"] = self.memory.stat_test_return
-                stats_training_dict["return_train"] = self.memory.stat_train_return
-                stats_training_dict["episode_length_test"] = self.memory.stat_test_steps
-                stats_training_dict["episode_length_train"] = self.memory.stat_train_steps
-                stats_training_dict["sampling_duration"] = t_sample - t_sample_prev
-                stats_training_dict["training_step_duration"] = t_train - t_update_buffer
-                stats_training += stats_training_dict,
-                self.total_updates += 1
-                if self.total_updates % self.update_model_interval == 0:
-                    # broadcast model weights
-                    interface.broadcast_model(self.agent.get_actor())
-                self.check_ratio(interface)
-
-                t_sample_prev = time.time()
+            self.run_round(interface, stats_training, t_sample_prev)
 
             t3 = time.time()
 
@@ -173,7 +186,7 @@ class TrainingOffline:
 
             logging.info(stats[-1].add_prefix("  ").to_string() + '\n')
 
-            if self.profiling:
+            if self.python_profiling:
                 pro.stop()
                 logging.info(pro.output_text(unicode=True, color=False, show_all=True))
 
@@ -182,8 +195,6 @@ class TrainingOffline:
             print(f"reward_sums: {self.memory.reward_sums}")
 
         self.epoch += 1
-        # self.agent.pi_scheduler.step()
-        # self.agent.q_scheduler.step()
         return stats
 
 
@@ -205,7 +216,8 @@ class TorchTrainingOffline(TrainingOffline):
                  update_buffer_interval: int = 100,
                  max_training_steps_per_env_step: float = 1.0,
                  sleep_between_buffer_retrieval_attempts: float = 1.0,
-                 profiling: bool = False,
+                 python_profiling: bool = False,
+                 pytorch_profiling: bool = False,
                  agent_scheduler: callable = None,
                  start_training: int = 0,
                  device: str = None):
@@ -239,7 +251,8 @@ class TorchTrainingOffline(TrainingOffline):
                          update_buffer_interval,
                          max_training_steps_per_env_step,
                          sleep_between_buffer_retrieval_attempts,
-                         profiling,
                          agent_scheduler,
                          start_training,
-                         device)
+                         device,
+                         python_profiling,
+                         pytorch_profiling)

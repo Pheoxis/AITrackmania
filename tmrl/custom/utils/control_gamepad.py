@@ -26,7 +26,7 @@ if platform.system() == "Windows":
 
 
     def upside_down_normal_y(x, mu=0, sigma=0.4):
-        if -0.25 < x < 0.25:
+        if -0.2 < x < 0.2:
             return 0.
         # Calculate the PDF of the standard normal distribution
         pdf = 1.05 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
