@@ -98,7 +98,7 @@ class RewardFunction:
         self.cooldown = self.window_size // 4
         self.change_cooldown = self.cooldown
         self.average_distance = self.calculate_average_distance()
-        self.n = max(1, min(len(self.data), int(10.25 / max(self.average_distance, 0.01))))  # intervals of ~10.25m
+        self.n = max(1, min(len(self.data), int(cfg.POINTS_DISTANCE / max(self.average_distance, 0.01))))  # intervals of ~10.25m
         self.i = 0
         self.min_value = cfg.MIN_NB_ZERO_REW_BEFORE_FAILURE
         self.max_value = cfg.MAX_NB_ZERO_REW_BEFORE_FAILURE
