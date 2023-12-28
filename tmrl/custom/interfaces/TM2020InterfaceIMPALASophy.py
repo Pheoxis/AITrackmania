@@ -23,7 +23,8 @@ class TM2020InterfaceIMPALASophy(TM2020Interface):
         super().__init__(
             img_hist_len=img_hist_len, gamepad=gamepad, min_nb_steps_before_failure=min_nb_steps_before_failure,
             save_replays=save_replay, grayscale=grayscale, finish_reward=finish_reward, resize_to=resize_to,
-            constant_penalty=constant_penalty, crash_penalty=crash_penalty, nb_zero_rew_before_failure=nb_zero_rew_before_failure
+            constant_penalty=constant_penalty, crash_penalty=crash_penalty,
+            nb_zero_rew_before_failure=nb_zero_rew_before_failure
         )
         self.record = record
         self.window_interface = None
@@ -64,11 +65,11 @@ class TM2020InterfaceIMPALASophy(TM2020Interface):
 
         failure_counter = spaces.Box(low=0.0, high=15, shape=(1,))
 
-        left_track = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number, ))
+        left_track = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number,))
 
-        center_track = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number, ))
+        center_track = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number,))
 
-        right_track = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number, ))
+        right_track = spaces.Box(low=-100.0, high=100.0, shape=(2 * self.points_number,))
 
         return spaces.Tuple(
             (
@@ -117,28 +118,32 @@ class TM2020InterfaceIMPALASophy(TM2020Interface):
 
         gear = np.array([data[18]], dtype='float32')
 
+        end_of_track = bool(data[9])
+
         rew, terminated, failure_counter, reward_sum = self.reward_function.compute_reward(
             pos=pos,  # position x,y,z
             crashed=bool(self.is_crashed),
             speed=speed[0],
             next_cp=self.cur_checkpoint < cur_cp,
-            next_lap=self.cur_lap < cur_lap
+            next_lap=self.cur_lap < cur_lap,
+            end_of_tack=end_of_track
         )
 
         race_progress = self.reward_function.compute_race_progress()
 
-        left_track, center_track, right_track = self.reward_function.get_track_info(pos, self.points_number)
-
-        end_of_track = bool(data[9])
-
-        if not self.is_crashed:
-            self.crash_cooldown -= 1
-
         if end_of_track:
             terminated = True
             failure_counter = 0.0
+            # race_progress = 1.0
             if self.save_replays:
                 mouse_save_replay_tm20(True)
+
+        self.reward_function.log_model_run(terminated=terminated, end_of_track=end_of_track)
+
+        left_track, center_track, right_track = self.reward_function.get_track_info(pos, self.points_number)
+
+        if not self.is_crashed:
+            self.crash_cooldown -= 1
 
         race_progress = np.array([race_progress], dtype='float32')
 

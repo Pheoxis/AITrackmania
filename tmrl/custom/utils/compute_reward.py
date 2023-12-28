@@ -78,12 +78,12 @@ class RewardFunction:
         self.step_counter = 0
         self.failure_counter = 0
         self.datalen = len(self.data)
-        # self.survive_reward = 0.5
+        self.speed_bonus = cfg.SPEED_BONUS
         self.crash_penalty = crash_penalty
         # self.crash_counter = 1
         self.constant_penalty = constant_penalty
         self.lap_cur_cooldown = cfg.LAP_COOLDOWN
-        self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
+        # self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
         self.crash_cur_cooldown = cfg.CRASH_COOLDOWN
         self.new_lap = False
         self.near_finish = False
@@ -98,7 +98,8 @@ class RewardFunction:
         self.cooldown = self.window_size // 4
         self.change_cooldown = self.cooldown
         self.average_distance = self.calculate_average_distance()
-        self.n = max(1, min(len(self.data), int(cfg.POINTS_DISTANCE / max(self.average_distance, 0.01))))  # intervals of ~10.25m
+        self.n = max(1, min(len(self.data),
+                            int(cfg.POINTS_DISTANCE / max(self.average_distance, 0.01))))  # intervals of ~10.25m
         self.i = 0
         self.min_value = cfg.MIN_NB_ZERO_REW_BEFORE_FAILURE
         self.max_value = cfg.MAX_NB_ZERO_REW_BEFORE_FAILURE
@@ -150,7 +151,7 @@ class RewardFunction:
         return route_to_next_poses
 
     def get_track_info(self, pos, points_number):
-        next_indices = [self.cur_idx + i * self.n for i in range(1, points_number + 1)]
+        next_indices = [self.cur_idx + i * self.n + 1 for i in range(points_number)]
         left_track_positions, center_track_positions, right_track_positions = [], [], []
         for i in range(len(next_indices)):
             if next_indices[i] >= len(self.data):
@@ -183,7 +184,7 @@ class RewardFunction:
         return average_distance
 
     def compute_reward(self, pos, crashed: bool = False, speed: float = None,
-                       next_cp: bool = False, next_lap: bool = False):
+                       next_cp: bool = False, next_lap: bool = False, end_of_tack: bool = False):
         terminated = False
         self.step_counter += 1
         self.prev_idx = self.cur_idx
@@ -202,7 +203,7 @@ class RewardFunction:
             # stop condition
             if index >= self.datalen or temp <= 0:
                 break
-        reward = (best_index - self.cur_idx) * self.index_divider  # * (1 + speed / 250.)
+        reward = (best_index - self.cur_idx) * self.index_divider
         if best_index == self.cur_idx:  # if the best index didn't change, we rewind (more Markovian reward)
             min_dist = np.inf
             index = self.cur_idx
@@ -238,18 +239,15 @@ class RewardFunction:
         if self.cur_idx > int(len(self.data) * 0.9925) and self.cur_idx > self.prev_idx:
             self.near_finish = True
 
-        if next_cp and self.checkpoint_cur_cooldown > 0:  # nie działa
-            self.new_checkpoint = True
-
         if self.new_lap and self.lap_cur_cooldown > 0:
             reward += cfg.LAP_REWARD * self.lap_cur_cooldown / cfg.LAP_COOLDOWN
             self.lap_cur_cooldown -= 1
             print(f"lap reward added: {reward}")
 
-        if self.new_checkpoint and self.checkpoint_cur_cooldown > 0:
-            reward += cfg.CHECKPOINT_REWARD * self.checkpoint_cur_cooldown / cfg.CHECKPOINT_COOLDOWN
-            self.checkpoint_cur_cooldown -= 1
+        if next_cp:
+            reward += cfg.CHECKPOINT_REWARD
             print(f"checkpoint reward added: {reward}")
+            # self.new_checkpoint = False
 
         if self.near_finish and self.lap_cur_cooldown > 0:
             near_finish_bonus = self.cur_idx / len(self.data) * cfg.END_OF_TRACK_REWARD
@@ -261,11 +259,10 @@ class RewardFunction:
             self.new_lap = False
             self.near_finish = False
 
-        if self.checkpoint_cur_cooldown <= 0:
-            self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
-            self.new_checkpoint = False
-
-        if speed < -0.5:
+        if speed > 1.0:
+            speed_reward = speed * self.speed_bonus  # x / 250 * 0.04 = 0.00016 * x
+            reward += speed_reward
+        elif speed < -0.5:
             penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
             reward += penalty
 
@@ -288,8 +285,13 @@ class RewardFunction:
             self.send_reward.append(reward)
 
         self.episode_reward += reward
-        if terminated:
-            # self.counter += 1
+
+        return reward, terminated, self.failure_counter, self.episode_reward
+
+    def log_model_run(self, terminated, end_of_track):
+        if terminated or end_of_track:
+            if end_of_track:
+                self.furthest_race_progress = 1.0
             print(f"Total reward of the run: {self.episode_reward}")
             if self.episode_reward != 0.0:
                 self.reward_sum_list.append(self.episode_reward)
@@ -325,8 +327,6 @@ class RewardFunction:
                     self.send_reward.clear()
                 else:
                     wandb.log({"Run reward": self.episode_reward})
-
-        return reward, terminated, self.failure_counter, self.episode_reward
 
     def compute_race_progress(self):
         return self.cur_idx / len(self.data)
@@ -376,5 +376,5 @@ class RewardFunction:
         self.episode_reward = 0.0
         # self.crash_counter = 1
         self.lap_cur_cooldown = cfg.LAP_COOLDOWN
-        self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
+        # self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
         self.furthest_race_progress = 0
