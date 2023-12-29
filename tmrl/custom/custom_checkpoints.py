@@ -199,9 +199,9 @@ def update_run_instance(run_instance, training_cls):
         run_instance.max_training_steps_per_env_step = max_training_steps_per_env_step
         logging.info(f"Max train/env step ratio changed to {max_training_steps_per_env_step} (old: {old}).")
 
-    if run_instance.profiling != profiling:
-        old = run_instance.profiling
-        run_instance.profiling = profiling
+    if run_instance.python_profiling != profiling:
+        old = run_instance.python_profiling
+        run_instance.python_profiling = profiling
         logging.info(f"Profiling witched to {profiling} (old: {old}).")
 
     if run_instance.start_training != start_training:
