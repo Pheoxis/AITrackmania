@@ -228,10 +228,10 @@ class RewardFunction:
         self.cur_idx = best_index
 
         # deviation_penalty
-        if best_index != self.cur_idx:
-            print(f"before: {reward}")
-            reward -= abs((2 / (1 + np.exp(-0.025 * min_dist))) - 1)
-            print(f"after: {reward}")
+        # if best_index != self.cur_idx:
+        #     print(f"before: {reward}")
+        #     reward -= abs((2 / (1 + np.exp(-0.025 * min_dist))) - 1)
+        #     print(f"after: {reward}")
 
         if next_lap and self.cur_idx > self.prev_idx:
             self.new_lap = True
@@ -250,7 +250,7 @@ class RewardFunction:
             # self.new_checkpoint = False
 
         if self.near_finish and self.lap_cur_cooldown > 0:
-            near_finish_bonus = self.cur_idx / len(self.data) * cfg.END_OF_TRACK_REWARD
+            near_finish_bonus = (cfg.LAP_COOLDOWN - self.lap_cur_cooldown) / cfg.LAP_COOLDOWN * cfg.END_OF_TRACK_REWARD
             reward += near_finish_bonus
             self.lap_cur_cooldown -= 1
             print(f"finish reward added: {near_finish_bonus}")
@@ -259,8 +259,8 @@ class RewardFunction:
             self.new_lap = False
             self.near_finish = False
 
-        if speed > 1.0:
-            speed_reward = speed * self.speed_bonus  # x / 250 * 0.04 = 0.00016 * x
+        if speed > cfg.SPEED_MIN_THRESHOLD:
+            speed_reward = (speed - cfg.SPEED_MIN_THRESHOLD) * self.speed_bonus  # x / 250 * 0.04 = 0.00016 * x
             reward += speed_reward
         elif speed < -0.5:
             penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
@@ -274,8 +274,8 @@ class RewardFunction:
             reward -= abs(self.constant_penalty)
 
         # clipping reward (maps values above 6 and below -6 to 1 and -1)
-        reward = math.tanh(6 / (1 + np.exp(-0.7 * reward)) - 3)
-
+        # reward = math.tanh(6 / (1 + np.exp(-0.7 * reward)) - 3)
+        reward = math.tanh(reward)
         race_progress = self.compute_race_progress()
 
         if race_progress > self.furthest_race_progress:
