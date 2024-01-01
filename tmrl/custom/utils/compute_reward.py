@@ -78,7 +78,7 @@ class RewardFunction:
         self.step_counter = 0
         self.failure_counter = 0
         self.datalen = len(self.data)
-        # self.survive_reward = 0.5
+        self.speed_bonus = cfg.SPEED_BONUS
         self.crash_penalty = crash_penalty
         # self.crash_counter = 1
         self.constant_penalty = constant_penalty
@@ -139,6 +139,9 @@ class RewardFunction:
         self.i = 0
 
     def get_n_next_checkpoints_xy(self, pos, number_of_next_points: int):
+        '''
+        Retrieves the positions of next checkpoints based on the current position.
+        '''
         next_indices = [self.cur_idx + i * self.n for i in range(1, number_of_next_points + 1)]
         for i in range(len(next_indices)):
             if next_indices[i] >= len(self.data):
@@ -151,6 +154,9 @@ class RewardFunction:
         return route_to_next_poses
 
     def get_track_info(self, pos, points_number):
+        '''
+        Fetches information about the track (left, center, right positions) for the next checkpoints.
+        '''
         next_indices = [self.cur_idx + i * self.n + 1 for i in range(points_number)]
         left_track_positions, center_track_positions, right_track_positions = [], [], []
         for i in range(len(next_indices)):
@@ -175,6 +181,9 @@ class RewardFunction:
         return left_track_positions, center_track_positions, right_track_positions
 
     def calculate_average_distance(self):
+        '''
+        Computes the average distance between consecutive points in the track data.
+        '''
         # Calculate the Euclidean distance between consecutive points in the trajectory
         distances = np.linalg.norm(np.diff(self.data, axis=0), axis=1)
 
@@ -185,6 +194,10 @@ class RewardFunction:
 
     def compute_reward(self, pos, crashed: bool = False, speed: float = None,
                        next_cp: bool = False, next_lap: bool = False, end_of_tack: bool = False):
+        '''
+        Calculates the reward based on the car's position, speed, and track progress.
+        Handles penalties for crashes, speed bonuses, lap completions, etc.
+        '''
         terminated = False
         self.step_counter += 1
         self.prev_idx = self.cur_idx
@@ -203,7 +216,7 @@ class RewardFunction:
             # stop condition
             if index >= self.datalen or temp <= 0:
                 break
-        reward = (best_index - self.cur_idx) * self.index_divider  # * (1 + speed / 250.)
+        reward = (best_index - self.cur_idx) * self.index_divider
         if best_index == self.cur_idx:  # if the best index didn't change, we rewind (more Markovian reward)
             min_dist = np.inf
             index = self.cur_idx
@@ -228,10 +241,10 @@ class RewardFunction:
         self.cur_idx = best_index
 
         # deviation_penalty
-        if best_index != self.cur_idx:
-            print(f"before: {reward}")
-            reward -= abs((2 / (1 + np.exp(-0.025 * min_dist))) - 1)
-            print(f"after: {reward}")
+        # if best_index != self.cur_idx:
+        #     print(f"before: {reward}")
+        #     reward -= abs((2 / (1 + np.exp(-0.025 * min_dist))) - 1)
+        #     print(f"after: {reward}")
 
         if next_lap and self.cur_idx > self.prev_idx:
             self.new_lap = True
@@ -250,7 +263,7 @@ class RewardFunction:
             # self.new_checkpoint = False
 
         if self.near_finish and self.lap_cur_cooldown > 0:
-            near_finish_bonus = self.cur_idx / len(self.data) * cfg.END_OF_TRACK_REWARD
+            near_finish_bonus = (cfg.LAP_COOLDOWN - self.lap_cur_cooldown) / cfg.LAP_COOLDOWN * cfg.END_OF_TRACK_REWARD
             reward += near_finish_bonus
             self.lap_cur_cooldown -= 1
             print(f"finish reward added: {near_finish_bonus}")
@@ -259,7 +272,12 @@ class RewardFunction:
             self.new_lap = False
             self.near_finish = False
 
-        if speed < -0.5:
+
+        if speed > cfg.SPEED_MIN_THRESHOLD:
+            speed_reward = (speed - cfg.SPEED_MIN_THRESHOLD) * self.speed_bonus  # x / 250 * 0.04 = 0.00016 * x
+            reward += speed_reward
+        elif speed < -0.5:
+
             penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
             reward += penalty
         elif speed > 1.0:
@@ -274,8 +292,8 @@ class RewardFunction:
             reward -= abs(self.constant_penalty)
 
         # clipping reward (maps values above 6 and below -6 to 1 and -1)
-        reward = math.tanh(6 / (1 + np.exp(-0.7 * reward)) - 3)
-
+        # reward = math.tanh(6 / (1 + np.exp(-0.7 * reward)) - 3)
+        reward = math.tanh(reward)
         race_progress = self.compute_race_progress()
 
         if race_progress > self.furthest_race_progress:
@@ -285,8 +303,17 @@ class RewardFunction:
             self.send_reward.append(reward)
 
         self.episode_reward += reward
-        if terminated or end_of_tack:
-            if end_of_tack:
+
+
+        return reward, terminated, self.failure_counter, self.episode_reward
+
+    def log_model_run(self, terminated, end_of_track):
+        '''
+         Logs the summary of the run, updating reward-related parameters and logging information to Weights & Biases (wandb).
+        '''
+        if terminated or end_of_track:
+            if end_of_track:
+
                 self.furthest_race_progress = 1.0
             print(f"Total reward of the run: {self.episode_reward}")
             if self.episode_reward != 0.0:
@@ -324,12 +351,16 @@ class RewardFunction:
                 else:
                     wandb.log({"Run reward": self.episode_reward})
 
-        return reward, terminated, self.failure_counter, self.episode_reward
-
     def compute_race_progress(self):
+        '''
+        Computes the current race progress based on the car's position in the track.
+        '''
         return self.cur_idx / len(self.data)
 
     def calculate_ema(self, alpha: float = 0.25):
+        '''
+        Calculates the Exponential Moving Average (EMA) of the reward sum list.
+        '''
         ema_values = [self.reward_sum_list[0]]
         for i in range(1, len(self.reward_sum_list)):
             ema = alpha * self.reward_sum_list[i] + (1 - alpha) * ema_values[-1]
@@ -344,6 +375,9 @@ class RewardFunction:
         return model.coef_[0][0]
 
     def change_min_nb_steps_before_failure(self):
+        '''
+        Checks the linear coefficient of a given data sequence.
+        '''
         if len(self.reward_sum_list) <= self.window_size * 2 or abs(self.episode_reward) < 1:
             return
         if self.change_cooldown <= 0:
@@ -365,6 +399,7 @@ class RewardFunction:
     def reset(self):
         """
         Resets the reward function for a new episode.
+        Adjusts the minimum number of steps before failure based on the trend of rewards.
         """
 
         self.cur_idx = 0
@@ -375,4 +410,6 @@ class RewardFunction:
         # self.crash_counter = 1
         self.lap_cur_cooldown = cfg.LAP_COOLDOWN
         # self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
+
         self.furthest_race_progress = 0
+

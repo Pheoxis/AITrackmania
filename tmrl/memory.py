@@ -23,6 +23,11 @@ __docformat__ = "google"
 
 def check_samples_crc(original_po, original_a, original_o, original_r, original_d, original_t, rebuilt_po, rebuilt_a,
                       rebuilt_o, rebuilt_r, rebuilt_d, rebuilt_t):
+    '''
+    Compares different components of samples and their CRC (Cyclic Redundancy Check).
+    Raises assertions if the components don't match, ensuring sample integrity.
+    Used for debugging and ensuring data consistency.
+    '''
     assert original_po is None or str(original_po) == str(
         rebuilt_po), f"previous observations don't match:\noriginal:\n{original_po}\n!= rebuilt:\n{rebuilt_po}"
     assert str(original_a) == str(rebuilt_a), f"actions don't match:\noriginal:\n{original_a}\n!= rebuilt:\n{rebuilt_a}"
@@ -283,10 +288,19 @@ class R2D2Memory(Memory, ABC):
         assert 0.1 <= self.rewind <= 0.9, "R2D2 REWIND CONST SHOULD BE BETWEEN 0.1 AND 0.9"
 
     def collate(self, batch, device):
+        '''
+        Method in Memory and its subclasses.
+        Used to collate a batch of data onto a specified device.
+        Calls an external function collate_torch and returns its result.
+        '''
         return collate_torch(batch, device)
 
     @staticmethod
     def find_zero_rewards_indices(reward_sums):
+        '''
+        Iterates through reward_sums, finding indices where the reward sum transitions from non-zero to zero.
+        Returns a list of indices where this transition occurs.
+        '''
         zero_rewards_indices = []
         prev_reward_sum = None
 
@@ -301,6 +315,10 @@ class R2D2Memory(Memory, ABC):
 
     @staticmethod
     def normalize_list(input_list):
+        '''
+        Normalizes a list of values between 0 and 1.
+        Handles cases where the range of values is zero to prevent division by zero.
+        '''
         # Find the minimum and maximum values in the list
         min_val = min(input_list)
         max_val = max(input_list)
@@ -315,6 +333,10 @@ class R2D2Memory(Memory, ABC):
         return normalized_list
 
     def sample_indices(self):
+        '''
+        Generates indices for sampling from the memory based on various conditions.
+        Logic involves selecting indices based on episode lengths, rewards, and episode transitions.
+        '''
         self.end_episodes_indices = self.find_zero_rewards_indices(self.data[self.rewards_index])
         self.reward_sums = [self.data[self.rewards_index][index]['reward_sum'] for index in self.end_episodes_indices]
         # print(self.end_episodes_indices)
@@ -478,6 +500,10 @@ class R2D2Memory(Memory, ABC):
             return res
 
     def sample(self):
+        '''
+        Samples data from the memory using the generated indices from sample_indices.
+        Collates the sampled data into a batch using the collate method and returns it.
+        '''
         indices = self.sample_indices()
         # print(f"indices[0]: {indices[0]}")
         # print(f"indices[-1]: {indices[-1]}")
@@ -487,6 +513,10 @@ class R2D2Memory(Memory, ABC):
 
 
 def load_and_print_pickle_file(path=r"C:\Users\Yann\Desktop\git\tmrl\data\data.pkl"):  # r"D:\data2020"
+    '''
+    Loads and prints content from a pickle file specified by the path.
+    Reads the pickle file and displays the number of samples along with their content.
+    '''
     import pickle
     with open(path, 'rb') as f:
         data = pickle.load(f)

@@ -93,6 +93,7 @@ class QRCNNQFunction(nn.Module):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
+        print(f"Observation dims in critic: {dim_obs}")
         dim_act = action_space.shape[0]
         self.num_quantiles = cfo.ALG_CONFIG["QUANTILES_NUMBER"]
 
@@ -222,6 +223,7 @@ class SquashedActorQRCNN(TorchActorModule):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
+        print(f"Observation dims critic: {dim_obs}")
         dim_act = action_space.shape[0]
         mlp_out_size = 1
 
@@ -249,7 +251,7 @@ class SquashedActorQRCNN(TorchActorModule):
         if cfg.NOISY_LINEAR_ACTOR:
             self.model_out = NoisyLinear(
                 rnn_sizes[0],
-                self.num_quantiles,
+                mlp_out_size,
                 device=self.device,
                 std_init=0.01
             )
