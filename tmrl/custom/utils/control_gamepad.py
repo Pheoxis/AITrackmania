@@ -8,6 +8,13 @@ if platform.system() == "Windows":
     import time
 
     def control_gamepad(gamepad, control):
+        '''
+        Controls a gamepad for driving simulation.
+        Actions:
+        Maps control inputs to specific gamepad actions for gas, brake, and turning.
+        Handles triggers and joystick movements accordingly.
+        Updates the gamepad state.
+        '''
         assert all(-1.0 <= c <= 1.0 for c in control), "This function accepts only controls between -1.0 and 1.0"
         if control[0] > 0.0:  # gas
             mapped_value = 0.165 * control[0] + 0.835  # f(-0.515)=0.75
@@ -26,6 +33,12 @@ if platform.system() == "Windows":
 
 
     def upside_down_normal_y(x, mu=0, sigma=0.4):
+        '''
+        Transforms a joystick input for vertical (Y-axis) movement.
+        Actions:
+        Adjusts the input based on a standard normal distribution to invert or normalize the joystick input.
+        Returns the transformed input within the range of -1 to 1.
+        '''
         if -0.2 < x < 0.2:
             return 0.
         # Calculate the PDF of the standard normal distribution
@@ -40,6 +53,12 @@ if platform.system() == "Windows":
             return min([upside_down_pdf, 1.])
 
     def gamepad_reset(gamepad):
+        '''
+        Resets the gamepad state and performs button presses for reset purposes.
+        Actions:
+        Resets the gamepad state.
+        Simulates pressing and releasing a specific button (B button) on the gamepad.
+        '''
         gamepad.reset()
         gamepad.press_button(button=0x2000)  # press B button
         gamepad.update()
@@ -48,6 +67,11 @@ if platform.system() == "Windows":
         gamepad.update()
 
     def gamepad_save_replay_tm20(gamepad):
+        '''
+        Initiates specific actions on the gamepad to save a replay in a simulated environment.
+        Actions:
+        Simulates a series of button presses (D-pad down, A, D-pad up, A) to trigger the replay saving functionality.
+        '''
         time.sleep(5.0)
         gamepad.reset()
         gamepad.press_button(0x0002)  # dpad down
@@ -75,6 +99,11 @@ if platform.system() == "Windows":
         gamepad.update()
 
     def gamepad_close_finish_pop_up_tm20(gamepad):
+        '''
+        Simulates pressing a button to close a finish pop-up window in a simulated environment.
+        Actions:
+        Simulates pressing and releasing the A button on the gamepad to close the pop-up window.
+        '''
         gamepad.reset()
         gamepad.press_button(0x1000)  # A
         gamepad.update()

@@ -15,6 +15,10 @@ from util import partial
 
 
 def detach(x):
+    '''
+    Functionality: Detaches a tensor if it is a torch tensor, otherwise recursively detaches tensors from elements within the object.
+    Returns: Detached tensor or a detached version of the object.
+    '''
     if isinstance(x, torch.Tensor):
         return x.detach()
     else:
@@ -22,12 +26,19 @@ def detach(x):
 
 
 def no_grad(model):
+    '''
+    Functionality: Sets requires_grad attribute of all parameters in the model to False.
+    Returns: The modified model with requires_grad set to False for all parameters.
+    '''
     for p in model.parameters():
         p.requires_grad = False
     return model
 
 
 def exponential_moving_average(averages, values, factor):
+    '''
+    Functionality: Updates the averages using exponential moving average formula for the given values and factor.
+    '''
     with torch.no_grad():
         for a, v in zip(averages, values):
             a += factor * (v - a)  # equivalent to a = (1-factor) * a + factor * v
@@ -64,6 +75,9 @@ class PopArt(Module):
 
     @torch.no_grad()
     def update(self, targets):
+        '''
+         Updates the internal state based on the given target values and normalizes the targets.
+        '''
         beta = max(1 / (self.updates + 1), self.beta) if self.zero_debias else self.beta
         # note that for beta = 1/self.updates the resulting mean, std would be the true mean and std over all past data
 
@@ -87,9 +101,15 @@ class PopArt(Module):
         return self.normalize(targets)
 
     def normalize(self, x):
+        '''
+        Normalizes the input tensor.
+        '''
         return (x - self.mean) / self.std
 
     def unnormalize(self, x):
+        '''
+        Un-normalizes the input tensor.
+        '''
         return x * self.std + self.mean
 
     def normalize_sum(self, s):
@@ -110,6 +130,9 @@ class TanhNormal(Distribution):
         super().__init__(self.normal.batch_shape, self.normal.event_shape)
 
     def log_prob(self, x):
+        '''
+         Calculates the log probability of a given value.
+        '''
         if hasattr(x, "pre_tanh_value"):
             pre_tanh_value = x.pre_tanh_value
         else:
@@ -118,6 +141,9 @@ class TanhNormal(Distribution):
         return self.normal.log_prob(pre_tanh_value) - torch.log(1 - x * x + self.epsilon)
 
     def sample(self, sample_shape=torch.Size()):
+        '''
+        Samples from the distribution.
+        '''
         z = self.normal.sample(sample_shape)
         out = torch.tanh(z)
         out.pre_tanh_value = z
@@ -217,11 +243,17 @@ AffineSimon = partial(AffineReLU, init_weight_bound=0.01, init_bias=1.)
 
 
 def dqn_conv(n):
+    '''
+    Creates a DQN convolutional neural network architecture.
+    '''
     return torch.nn.Sequential(torch.nn.Conv2d(n, 32, kernel_size=8, stride=4), torch.nn.ReLU(), torch.nn.Conv2d(32, 64, kernel_size=4, stride=2), torch.nn.ReLU(),
                                torch.nn.Conv2d(64, 64, kernel_size=3, stride=1), torch.nn.ReLU())
 
 
 def big_conv(n):
+    '''
+    Creates a larger convolutional neural network architecture.
+    '''
     # if input shape = 64 x 256 then output shape = 2 x 26
     return torch.nn.Sequential(
         torch.nn.Conv2d(n, 64, 8, stride=2),
@@ -236,6 +268,9 @@ def big_conv(n):
 
 
 def hd_conv(n):
+    '''
+    Creates a convolutional neural network architecture with more layers.
+    '''
     return torch.nn.Sequential(
         torch.nn.Conv2d(n, 32, 8, stride=2),
         torch.nn.LeakyReLU(),

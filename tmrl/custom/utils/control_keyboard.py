@@ -49,6 +49,12 @@ if platform.system() == "Windows":
     # Key Functions
 
     def PressKey(hexKeyCode):
+        '''
+        Simulates pressing a key on the keyboard.
+        Actions:
+        Creates a keyboard input event using the SendInput function from user32.dll.
+        Sends a key press event using the given key code.
+        '''
         extra = ctypes.c_ulong(0)
         ii_ = Input_I()
         ii_.ki = KeyBdInput(0, hexKeyCode, 0x0008, 0, ctypes.pointer(extra))
@@ -56,6 +62,12 @@ if platform.system() == "Windows":
         ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
 
     def ReleaseKey(hexKeyCode):
+        '''
+        Simulates releasing a key on the keyboard.
+        Actions:
+        Creates a keyboard input event using the SendInput function from user32.dll.
+        Sends a key release event using the given key code.
+        '''
         extra = ctypes.c_ulong(0)
         ii_ = Input_I()
         ii_.ki = KeyBdInput(0, hexKeyCode, 0x0008 | 0x0002, 0, ctypes.pointer(extra))
@@ -63,6 +75,12 @@ if platform.system() == "Windows":
         ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
 
     def apply_control(action):  # move_fast
+        '''
+        Applies control actions based on specific key presses for movement.
+        Actions:
+        Determines which keys (W, A, S, D) to press or release based on the provided action string.
+        Simulates key presses or releases accordingly for forward (W), backward (S), left (A), and right (D) movement.
+        '''
         if 'f' in action:
             PressKey(W)
         else:
@@ -81,10 +99,21 @@ if platform.system() == "Windows":
             ReleaseKey(D)
 
     def keyres():
+        '''
+        Triggers a key press and release for the DEL key.
+        Actions:
+        Simulates a press and release of the DEL key.
+        '''
         PressKey(DEL)
         ReleaseKey(DEL)
 
     def keysavereplay():  # TODO: debug
+        '''
+        Saves a replay with specific key sequences and mouse actions.
+        Actions:
+        Simulates pressing the R key, waits, changes the replay name, writes a timestamp, saves the replay, and closes the replay window.
+        Utilizes mouse-related functions for changing replay names, saving the replay, and closing the window.
+        '''
         PressKey(R)
         time.sleep(0.1)
         ReleaseKey(R)

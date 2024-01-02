@@ -10,6 +10,9 @@ if platform.system() == "Windows":
 
 
     class WindowInterface:
+        '''
+         Manages the interaction with a window named "Trackmania" in a Windows environment.
+        '''
         def __init__(self, window_name="Trackmania"):
             self.window_name = window_name
 
@@ -31,6 +34,9 @@ if platform.system() == "Windows":
             self.y_origin_offset = 0
 
         def screenshot(self):
+            '''
+            Captures a screenshot of the specified window.
+            '''
             hwnd = win32gui.FindWindow(None, self.window_name)
             assert hwnd != 0, f"Could not find a window named {self.window_name}."
 
@@ -57,6 +63,9 @@ if platform.system() == "Windows":
             return img
 
         def move_and_resize(self, x=1, y=0, w=cfg.WINDOW_WIDTH, h=cfg.WINDOW_HEIGHT):
+            '''
+            Moves and resizes the window to the specified coordinates and dimensions.
+            '''
             x += self.x_origin_offset
             y += self.y_origin_offset
             w += self.w_diff
@@ -67,6 +76,13 @@ if platform.system() == "Windows":
 
 
     def profile_screenshot():
+        '''
+        Profiling function that measures the time taken to capture 5000 screenshots using the WindowInterface.
+        Procedure:
+        Initializes a WindowInterface object for the "Trackmania" window.
+        Captures 5000 screenshots using the screenshot() method of WindowInterface.
+        Stops the profiler and prints the profiling results using pyinstrument.
+        '''
         from pyinstrument import Profiler
         pro = Profiler()
         window_interface = WindowInterface("Trackmania")
