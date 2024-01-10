@@ -45,26 +45,6 @@ with open(TRACK_PATH_RIGHT, 'rb') as f:
 # print(f"LEFT TRACK: \n {left_track}")
 # print(f"RIGHT TRACK: \n {right_track}")
 
-# # # Matplotlib 3D scatter plot for left_track
-# fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-# ax.scatter(left_track[:, 0], left_track[:, 1], left_track[:, 2], c='blue', marker='o')
-# ax.set_title('Left Track')
-# plt.show()
-# #
-# # # Matplotlib 3D scatter plot for right_track
-# fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-# ax.scatter(right_track[:, 0], right_track[:, 1], right_track[:, 2], c='red', marker='o')
-# ax.set_title('Right Track')
-# plt.show()
-#
-# # Combined Matplotlib 3D scatter plot for both tracks
-# fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-# ax.scatter(left_track[:, 0], left_track[:, 1], left_track[:, 2], c='blue', marker='o', label='Left Track')
-# ax.scatter(right_track[:, 0], right_track[:, 1], right_track[:, 2], c='red', marker='o', label='Right Track')
-# ax.set_title('Combined Left and Right Tracks')
-# ax.legend()
-# plt.show()
-
 # Plotly interactive 3D scatter plot for both tracks
 plotly_fig = go.Figure()
 plotly_fig.add_trace(go.Scatter3d(x=left_track[:, 0], y=left_track[:, 1], z=left_track[:, 2],

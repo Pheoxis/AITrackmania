@@ -98,7 +98,7 @@ class TM2020InterfaceIMPALASophy(TM2020Interface):
         cur_cp = int(data[0])
         cur_lap = int(data[1])
 
-        speed = np.array([data[2]], dtype='float32')
+        speed = np.array([data[2] * 3.6], dtype='float32')
 
         pos = np.array([data[3], data[4], data[5]], dtype='float32')
 
@@ -180,7 +180,7 @@ class TM2020InterfaceIMPALASophy(TM2020Interface):
         self.cur_lap = 0
         self.cur_checkpoint = 0
 
-        speed = np.array([data[2]], dtype='float32')
+        speed = np.array([data[2] * 3.6], dtype='float32')
 
         pos = np.array([data[3], data[4], data[5]], dtype='float32')
 

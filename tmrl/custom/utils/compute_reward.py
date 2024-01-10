@@ -109,6 +109,7 @@ class RewardFunction:
         self.index_divider = 100. / self.datalen
         print(f"n: {self.n}")
         self.furthest_race_progress = 0
+        self.medium_speed_bonus = cfg.SPEED_BONUS / 2
 
         if cfg.WANDB_DEBUG_REWARD:
             self.send_reward = []
@@ -227,6 +228,20 @@ class RewardFunction:
             self.failure_counter = 0
         self.cur_idx = best_index
 
+        if self.episode_reward != 0.0:
+            reward -= abs(self.constant_penalty)
+            if speed > cfg.SPEED_MIN_THRESHOLD:
+                speed_reward = (speed - cfg.SPEED_MIN_THRESHOLD) * self.speed_bonus  # x / 250 * 0.04 = 0.00016 * x
+                reward += speed_reward
+                # print(f"speed_reward: {speed_reward}")
+
+            elif speed > cfg.SPEED_MEDIUM_THRESHOLD:
+                speed_reward = (speed - cfg.SPEED_MEDIUM_THRESHOLD * 0.75) * self.speed_bonus * 2
+                reward += speed_reward
+            elif speed < -0.5:
+                penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
+                reward += penalty
+
         # deviation_penalty
         # if best_index != self.cur_idx:
         #     print(f"before: {reward}")
@@ -259,19 +274,9 @@ class RewardFunction:
             self.new_lap = False
             self.near_finish = False
 
-        if speed > cfg.SPEED_MIN_THRESHOLD:
-            speed_reward = (speed - cfg.SPEED_MIN_THRESHOLD) * self.speed_bonus  # x / 250 * 0.04 = 0.00016 * x
-            reward += speed_reward
-        elif speed < -0.5:
-            penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
-            reward += penalty
-
         if crashed:
             reward -= abs(self.crash_penalty)
             # self.crash_counter += 1
-
-        if self.episode_reward != 0.0:
-            reward -= abs(self.constant_penalty)
 
         # clipping reward (maps values above 6 and below -6 to 1 and -1)
         # reward = math.tanh(6 / (1 + np.exp(-0.7 * reward)) - 3)

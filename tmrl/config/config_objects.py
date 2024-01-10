@@ -8,7 +8,7 @@ import config.config_constants as cfg
 # import custom.models.MaybeBetterTQC as mtqc
 # import custom.models.BetterTQCmini as mini
 import custom.models.IMPALA as impala
-import custom.models.IMPALAwoImages as impalaWoImages
+import custom.models.Sophy as impalaWoImages
 from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
 from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
 from custom.custom_algorithms import TQCAgent as TQC_Agent
@@ -18,7 +18,7 @@ from custom.custom_memories import MemoryTMLidar, MemoryTMLidarProgress, get_loc
     get_local_buffer_sample_mobilenet, MemoryTMFull, MemoryR2D2, MemoryR2D2woImages
 from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
     obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
-from custom.interfaces.TM2020InterfaceIMPALASophy import TM2020InterfaceIMPALASophy
+from custom.interfaces.TM2020InterfaceSophy import TM2020InterfaceIMPALASophy
 from custom.interfaces.TM2020InterfaceIMPALAwoImages import TM2020InterfaceIMPALAwoImages
 # from custom.interfaces.TM2020InterfaceTQC import TM2020InterfaceTQC
 from custom.interfaces.TM2020Interface import TM2020Interface
