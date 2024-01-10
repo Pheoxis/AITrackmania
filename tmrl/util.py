@@ -120,13 +120,6 @@ def partial_to_dict(p: functools.partial, version="3"):
     return dict(output, __format_version__=version) if version else output
 
 
-# def partial_from_dict(d: dict):
-#     d = d.copy()
-#     assert d.pop("__format_version__", "3") == "3"
-#     d = {k: partial_from_dict(v) if isinstance(v, dict) and FKEY in v else v for k, v in d.items()}
-#     func = get_class_or_function(d.pop(FKEY) or "tmrl.util:default")
-#     return partial(func, **d)
-
 
 def get_class_or_function(func):
     module, name = func.split(":")
@@ -134,7 +127,6 @@ def get_class_or_function(func):
 
 
 def partial_from_args(func: Union[str, callable], kwargs: Dict[str, str]):
-    # logging.info(func, kwargs)  # useful to visualize the parsing process
     func = get_class_or_function(func) if isinstance(func, str) else func
     keys = {k.split('.')[0] for k in kwargs}
     keywords = {}

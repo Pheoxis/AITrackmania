@@ -194,10 +194,6 @@ class RewardFunction:
 
     def compute_reward(self, pos, crashed: bool = False, speed: float = None,
                        next_cp: bool = False, next_lap: bool = False, end_of_tack: bool = False):
-        '''
-        Calculates the reward based on the car's position, speed, and track progress.
-        Handles penalties for crashes, speed bonuses, lap completions, etc.
-        '''
         terminated = False
         self.step_counter += 1
         self.prev_idx = self.cur_idx
@@ -240,6 +236,20 @@ class RewardFunction:
             self.failure_counter = 0
         self.cur_idx = best_index
 
+        if self.episode_reward != 0.0:
+            reward -= abs(self.constant_penalty)
+            if speed > cfg.SPEED_MIN_THRESHOLD:
+                speed_reward = (speed - cfg.SPEED_MIN_THRESHOLD) * self.speed_bonus  # x / 250 * 0.04 = 0.00016 * x
+                reward += speed_reward
+                # print(f"speed_reward: {speed_reward}")
+
+            elif speed > cfg.SPEED_MEDIUM_THRESHOLD:
+                speed_reward = (speed - cfg.SPEED_MEDIUM_THRESHOLD * 0.75) * self.speed_bonus * 2
+                reward += speed_reward
+            elif speed < -0.5:
+                penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
+                reward += penalty
+
         # deviation_penalty
         # if best_index != self.cur_idx:
         #     print(f"before: {reward}")
@@ -272,24 +282,9 @@ class RewardFunction:
             self.new_lap = False
             self.near_finish = False
 
-
-        if speed > cfg.SPEED_MIN_THRESHOLD:
-            speed_reward = (speed - cfg.SPEED_MIN_THRESHOLD) * self.speed_bonus  # x / 250 * 0.04 = 0.00016 * x
-            reward += speed_reward
-        elif speed < -0.5:
-
-            penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
-            reward += penalty
-        elif speed > 1.0:
-            speed_reward = (speed / 250) * 0.04
-            reward += speed_reward
-
         if crashed:
             reward -= abs(self.crash_penalty)
             # self.crash_counter += 1
-
-        if self.episode_reward != 0.0:
-            reward -= abs(self.constant_penalty)
 
         # clipping reward (maps values above 6 and below -6 to 1 and -1)
         # reward = math.tanh(6 / (1 + np.exp(-0.7 * reward)) - 3)
@@ -303,7 +298,6 @@ class RewardFunction:
             self.send_reward.append(reward)
 
         self.episode_reward += reward
-
 
         return reward, terminated, self.failure_counter, self.episode_reward
 

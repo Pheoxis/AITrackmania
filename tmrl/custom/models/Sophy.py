@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.autograd import Variable
 from torch.distributions import Normal
+from torch.nn import MultiheadAttention
 from torchrl.modules import NoisyLinear, TanhNormal
 
 import config.config_constants as cfg
@@ -111,6 +112,8 @@ class QRCNNQFunction(nn.Module):
             rnn_lens[0]
         )
 
+        self.attention = MultiheadAttention(embed_dim=rnn_sizes[0], num_heads=2, batch_first=True)
+
         # self.rnn_block_cat = lstm(
         #     self.cnn_module.mlp_out_size + rnn_sizes[0] + dim_act,
         #     rnn_sizes[1],
@@ -189,7 +192,9 @@ class QRCNNQFunction(nn.Module):
 
         rnn_block_api_out, (h0, c0) = self.rnn_block_api(cat_mlp_api_act_out, (h0, c0))
 
-        model_out = self.model_out(rnn_block_api_out)
+        attn_output, _ = self.attention(rnn_block_api_out, rnn_block_api_out, rnn_block_api_out)
+
+        model_out = self.model_out(attn_output)
 
         if cfg.OUTPUT_DROPOUT > 0.0:
             model_out = self.dropout(model_out)
@@ -223,7 +228,7 @@ class SquashedActorQRCNN(TorchActorModule):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         dim_obs = sum(math.prod(s for s in space.shape) for space in observation_space)
-        print(f"Observation dims critic: {dim_obs}")
+        # print(f"Observation dims critic: {dim_obs}")
         dim_act = action_space.shape[0]
         mlp_out_size = 1
 
@@ -240,6 +245,8 @@ class SquashedActorQRCNN(TorchActorModule):
             rnn_sizes[0],
             rnn_lens[0]
         )
+
+        self.attention = MultiheadAttention(embed_dim=rnn_sizes[0], num_heads=2, batch_first=True)
 
         # self.rnn_block_cat = lstm(
         #     self.cnn_module.mlp_out_size + rnn_sizes[0],
@@ -322,7 +329,9 @@ class SquashedActorQRCNN(TorchActorModule):
 
         rnn_block_api_out, (h0, c0) = self.rnn_block_api(mlp_api_out, (h0, c0))
 
-        model_out = self.model_out(rnn_block_api_out)
+        attn_output, _ = self.attention(rnn_block_api_out, rnn_block_api_out, rnn_block_api_out)
+
+        model_out = self.model_out(attn_output)
 
         if cfg.OUTPUT_DROPOUT > 0.0:
             model_out = self.dropout(model_out)
@@ -345,7 +354,7 @@ class SquashedActorQRCNN(TorchActorModule):
             # NOTE: The correction formula is a little bit magic. To get an understanding
             # of where it comes from, check out the original SAC paper (arXiv 1801.01290)
             # and look in appendix C. This is a more numerically-stable equivalent to Eq 21.
-            # Try deriving it yourself as a (very difficult) exercise. :)
+            # Try deriving it yourself as a (very difficult) exercise. 🙂
             logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
             logp_pi -= (2 * (np.log(2) - pi_action - F.softplus(-2 * pi_action))).sum(axis=1)
         else:

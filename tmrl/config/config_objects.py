@@ -8,7 +8,7 @@ import config.config_constants as cfg
 # import custom.models.MaybeBetterTQC as mtqc
 # import custom.models.BetterTQCmini as mini
 import custom.models.IMPALA as impala
-import custom.models.IMPALAwoImages as impalaWoImages
+import custom.models.Sophy as impalaWoImages
 from custom.custom_algorithms import REDQSACAgent as REDQ_Agent
 from custom.custom_algorithms import SpinupSacAgent as SAC_Agent
 from custom.custom_algorithms import TQCAgent as TQC_Agent
@@ -18,7 +18,7 @@ from custom.custom_memories import MemoryTMLidar, MemoryTMLidarProgress, get_loc
     get_local_buffer_sample_mobilenet, MemoryTMFull, MemoryR2D2, MemoryR2D2woImages
 from custom.custom_preprocessors import obs_preprocessor_tm_act_in_obs, obs_preprocessor_tm_lidar_act_in_obs, \
     obs_preprocessor_tm_lidar_progress_act_in_obs, obs_preprocessor_mobilenet_act_in_obs
-from custom.interfaces.TM2020InterfaceIMPALASophy import TM2020InterfaceIMPALASophy
+from custom.interfaces.TM2020InterfaceSophy import TM2020InterfaceIMPALASophy
 from custom.interfaces.TM2020InterfaceIMPALAwoImages import TM2020InterfaceIMPALAwoImages
 # from custom.interfaces.TM2020InterfaceTQC import TM2020InterfaceTQC
 from custom.interfaces.TM2020Interface import TM2020Interface
@@ -99,33 +99,6 @@ else:
                 checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
                 min_nb_steps_before_failure=cfg.MIN_NB_STEPS_BEFORE_FAILURE
             )
-            # INT = partial(
-            #     TM2020InterfaceIMPALAwoImages, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
-            #     grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
-            #     crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
-            #     checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
-            #     min_nb_steps_before_failure=cfg.MIN_NB_STEPS_BEFORE_FAILURE
-            # )
-        # INT = partial(
-        #     TM2020InterfaceTQCmini, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
-        #     grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
-        #     crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
-        #     checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
-        #     min_nb_steps_before_failure=100
-        # )
-        # INT = partial(
-        #     TM2020InterfaceTQC, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
-        #     grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
-        #     crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
-        #     checkpoint_reward=cfg.CHECKPOINT_REWARD, lap_reward=cfg.LAP_REWARD,
-        #     min_nb_steps_before_failure=200 if cfg.MAP_NAME == "tmrl_test" else 120
-        # )
-        # INT = partial(
-        #     TM2020InterfaceCustom, img_hist_len=cfg.IMG_HIST_LEN, gamepad=cfg.PRAGMA_GAMEPAD,
-        #     grayscale=cfg.GRAYSCALE, resize_to=(cfg.IMG_WIDTH, cfg.IMG_HEIGHT),
-        #     crash_penalty=cfg.CRASH_PENALTY, constant_penalty=cfg.CONSTANT_PENALTY,
-        #     min_nb_steps_before_failure=200 if cfg.MAP_NAME == "tmrl_test" else 120
-        # )
     else:
         INT = partial(TM2020Interface,
                       img_hist_len=cfg.IMG_HIST_LEN,

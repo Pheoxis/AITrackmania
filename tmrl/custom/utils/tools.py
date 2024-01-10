@@ -51,17 +51,6 @@ class TM2020OpenPlanetClient:
                 self.__lock.acquire()
                 self.__data = data_used
                 self.__lock.release()
-        # except socket.error as e:
-        # if e.errno == errno.ECONNREFUSED:
-        #     print("Connection refused by the server. Make sure the server is running.")
-        # else:
-        #     print(f"Error occurred: {e}")
-        # # Optionally, you can add more specific error handling here based on different errno values.
-        # # For example, if you encounter errno.ECONNRESET, it indicates the server closed the connection.
-        #
-        # # Wait for a few seconds before attempting to reconnect
-        # print("Attempting to reconnect...")
-        # time.sleep(5)
 
     def retrieve_data(self, sleep_if_empty=0.01, timeout=10.0):
         """

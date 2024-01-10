@@ -14,7 +14,7 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import config.config_constants as cfg
 # local imports
 from custom.models import MLPActorCritic, REDQMLPActorCritic
-from custom.models.IMPALAwoImages import QRCNNActorCritic
+from custom.models.Sophy import QRCNNActorCritic
 from custom.utils.nn import copy_shared, no_grad
 from training import TrainingAgent
 from util import cached_property
@@ -408,8 +408,6 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
                 backup = r + self.gamma * (1 - d) * (q_pi_targ - alpha_t * logp_a2)
 
         # MSE loss against Bellman backup
-        # loss_q1 = ((q1 - backup) ** 2).mean()
-        # loss_q2 = ((q2 - backup) ** 2).mean()
         loss_q1 = q1.sub_(backup).pow_(2).mean()
         loss_q2 = q2.sub_(backup).pow_(2).mean()
         loss_critic = loss_q1.add_(loss_q2).div_(2)  # averaged for homogeneity with REDQ
@@ -835,12 +833,6 @@ class TQCAgent(TrainingAgent):
                 p_targ.data.mul_(self.polyak)
                 p_targ.data.add_((1. - self.polyak) * p.data)
 
-        # ret_dict = {
-        #     "loss_actor": actor_loss.detach().item(),
-        #     "loss_critic": critic_loss.detach().item(),  # or any other relevant critic loss
-        #     "actor_lr": self.actor_optimizer.param_groups[0]['lr'],
-        #     "critic_lr": self.critic_optimizer.param_groups[0]['lr']
-        # }
 
         with torch.no_grad():
             ret_dict = dict()
@@ -891,164 +883,3 @@ class TQCAgent(TrainingAgent):
             ret_dict["entropy_coef"] = alpha_t.item()
 
         return ret_dict
-
-# =================================== IQN ================================================================
-
-# @dataclass(eq=False)
-# class IQNAgent(TrainingAgent):
-#     observation_space: type
-#     action_space: type
-#     device: str = None
-#     model_cls: type = QRCNNActorCritic  # Replace with your QuantileActorCritic class
-#     gamma: float = 0.99
-#     polyak: float = 0.995
-#     alpha: float = 0.2
-#     lr_actor: float = 1e-3
-#     lr_critic: float = 1e-3
-#     lr_entropy: float = 1e-3
-#     learn_entropy_coef: bool = True
-#     target_entropy: float = None
-#     quantiles_number: int = 32
-#     quantile_embedding_size: int = 128
-#
-#     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
-#
-#     def __post_init__(self):
-#         self.pis = torch.FloatTensor(
-#             [np.pi * i for i in range(self.quantile_embedding_size)]
-#         ).view(1, 1, self.quantile_embedding_size).to(self.device)
-#
-#         observation_space, action_space = self.observation_space, self.action_space
-#         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
-#         model = self.model_cls(observation_space, action_space)
-#         logging.debug(f" device IQN: {device}")
-#         self.model = model.to(device)
-#         self.model_target = no_grad(deepcopy(self.model))
-#
-#         # Set up optimizers for policy and q-function
-#         self.actor_optimizer = Adam(self.model.actor.parameters(), lr=self.lr_actor, weight_decay=0.005)
-#         self.critic_optimizer = Adam(itertools.chain(self.model.q1.parameters(), self.model.q2.parameters()),
-#                                      lr=self.lr_critic, weight_decay=0.005)
-#
-#         self.quantiles_total = self.model.q1.num_quantiles + self.model.q2.num_quantiles
-#
-#         if self.target_entropy is None:
-#             self.target_entropy = -np.prod(action_space.shape).astype(np.float32)
-#         else:
-#             self.target_entropy = float(self.target_entropy)
-#
-#         if self.learn_entropy_coef:
-#             self.log_alpha = torch.log(torch.ones(1, device=device) * self.alpha).requires_grad_(True)
-#             self.alpha_optimizer = Adam([self.log_alpha], lr=self.lr_entropy)
-#         else:
-#             self.alpha_t = torch.tensor(float(self.alpha)).to(device)
-#
-#         if cfg.WANDB_GRADIENTS:
-#             wandb.watch(self.model, log_freq=10)
-#
-#     def get_actor(self):
-#         return self.model_nograd.actor
-#
-#     @staticmethod
-#     def calculate_huber_loss(td_errors, k=1.0):
-#         """
-#         Calculate huber loss element-wisely depending on kappa k.
-#         """
-#         loss = torch.where(td_errors.abs() <= k, 0.5 * td_errors.pow(2), k * (td_errors.abs() - 0.5 * k))
-#         # assert loss.shape == (td_errors.shape[0], 8, 8), "huber loss has wrong shape"
-#         return loss
-#
-#     @staticmethod
-#     def clip_weights(model, max_value=0.98):
-#         for param in model.parameters():
-#             param.data.clamp_(-max_value, max_value)
-#
-#     def calc_cos(self, batch_size, n_tau=quantile_embedding_size):
-#         """
-#         Calculating the cosinus values depending on the number of tau samples
-#         """
-#         taus = torch.rand(batch_size, n_tau).to(self.device).unsqueeze(-1)  # (batch_size, n_tau, 1)
-#         cos = torch.cos(taus * self.pis)
-#
-#         assert cos.shape == (batch_size, n_tau, self.quantile_embedding_size), "cos shape is incorrect"
-#         return cos, taus
-#
-#     def soft_update(self, local_model, target_model):
-#         """Soft update model parameters.
-#         θ_target = τ*θ_local + (1 - τ)*θ_target
-#         Params
-#         ======
-#             local_model (PyTorch model): weights will be copied from
-#             target_model (PyTorch model): weights will be copied to
-#             tau (float): interpolation parameter
-#         """
-#         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
-#             target_param.data.copy_(self.polyak * local_param.data + (1.0 - self.polyak) * target_param.data)
-#
-#     def train(self, batch):
-#         """Update value parameters using given batch of experience tuples.
-#         Params
-#         ======
-#             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples
-#             gamma (float): discount factor
-#         """
-#         torch.autograd.set_detect_anomaly(True)
-#         o, a, r, o2, d, _ = batch
-#         batch_size = len(batch[0])
-#         pi, logp_pi = self.model.actor(o)
-#
-#         loss_alpha = None
-#         if self.learn_entropy_coef:
-#             # Important: detach the variable from the graph
-#             # so we don't change it with other losses
-#             # see https://github.com/rail-berkeley/softlearning/issues/60
-#             alpha_t = torch.exp(self.log_alpha.detach())
-#             loss_alpha = -(self.log_alpha * (logp_pi + self.target_entropy).detach()).mean()
-#         else:
-#             alpha_t = self.alpha_t  # (1, )
-#
-#         if loss_alpha is not None:
-#             self.alpha_optimizer.zero_grad()
-#             loss_alpha.backward()
-#             self.alpha_optimizer.step()
-#
-#         q1 = self.model.q1(o, a)
-#         q2 = self.model.q2(o, a)
-#
-#         # Get max predicted Q values (for next states) from target model
-#         Q_targets_next, _ = self.qnetwork_target(o2)
-#         Q_targets_next = Q_targets_next.detach().max(2)[0].unsqueeze(1)  # (batch_size, 1, N)
-#
-#         # Compute Q targets for current states
-#         Q_targets = r.unsqueeze(-1) + (self.gamma ** self.n_step * Q_targets_next * (1. - d.unsqueeze(-1)))
-#         # Get expected Q values from local model
-#         Q_expected, taus = self.qnetwork_local(o)
-#         Q_expected = Q_expected.gather(2, a.unsqueeze(-1).expand(batch_size, 8, 1))
-#
-#         # Quantile Huber loss
-#         td_error = Q_targets - Q_expected
-#         assert td_error.shape == (batch_size, 8, 8), "wrong td error shape"
-#         huber_l = self.calculate_huber_loss(td_error, 1.0)
-#         quantil_l = abs(taus - (td_error.detach() < 0).float()) * huber_l / 1.0
-#
-#         loss = quantil_l.sum(dim=1).mean(dim=1)  # , keepdim=True if per weights get multipl
-#         loss = loss.mean()
-#
-#         # Minimize the loss
-#         loss.backward()
-#         # clip_grad_norm_(self.qnetwork_local.parameters(),1)
-#         self.optimizer.step()
-#
-#         # ------------------- update target network ------------------- #
-#         self.soft_update(self.qnetwork_local, self.qnetwork_target)
-#
-#         #     ret_dict = {
-#         #         "loss_actor": actor_loss.item(),
-#         #         "loss_critic": critic_loss.item(),  # or any other relevant critic loss
-#         #      }
-#         #
-#         #     if self.learn_entropy_coef:
-#         #         ret_dict["loss_entropy_coef"] = alpha_loss.item()
-#         #         ret_dict["entropy_coef"] = alpha_t.item()
-#         #
-#         # return ret_dict
