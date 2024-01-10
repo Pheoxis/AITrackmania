@@ -55,6 +55,13 @@ def dump_run_instance_images_dataset(run_instance, checkpoint_path):
 
 
 def update_memory(run_instance):
+    '''
+    This function updates the configuration parameters related to memory in a reinforcement learning run instance if they differ from the current settings.
+    Args:
+    run_instance: An instance of a run or training session containing configurations and memory settings.
+    Returns:
+    Returns the updated run_instance after modifying memory-related parameters if necessary. If no modifications are needed, it returns the original run_instance.
+    '''
     steps = cfg.MODEL_CONFIG["TRAINING_STEPS_PER_ROUND"]
     memory_size = cfg.MODEL_CONFIG["MEMORY_SIZE"]
     batch_size = cfg.MODEL_CONFIG["BATCH_SIZE"]

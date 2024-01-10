@@ -26,6 +26,11 @@ logging.basicConfig(level=logging.INFO)
 
 
 def set_seed(seed=cfg.SEED):
+    '''
+    Functionality:
+    Sets seeds for random number generators in NumPy and PyTorch for reproducibility.
+    If CUDA (GPU) is available, it sets the seed for GPU operations and configures torch.backends.cudnn for deterministic behavior.
+    '''
     np.random.seed(seed)
     # Set seed for PyTorch CPU operations
     torch.manual_seed(seed)
@@ -60,6 +65,15 @@ class REDQSACAgent(TrainingAgent):
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
     def __post_init__(self):
+        '''
+        Functionality:
+        Initializes the REDQ-SAC agent after the object creation.
+        Sets up random seed generation for reproducibility.
+        Initializes the model based on the provided observation and action spaces.
+        Defines optimizers for the actor, Q-functions, and entropy coefficient.
+        Handles alpha value and entropy coefficient settings.
+        Sets up the target entropy for policy optimization.
+        '''
         set_seed()
 
         observation_space, action_space = self.observation_space, self.action_space
@@ -87,10 +101,28 @@ class REDQSACAgent(TrainingAgent):
             self.alpha_t = torch.tensor(float(self.alpha)).to(self.device)
 
     def get_actor(self):
+        '''
+        Functionality:
+        Returns the actor part of the model, facilitating access to the policy function.
+        '''
         return self.model_nograd.actor
 
     def train(self, batch, epoch, batch_number, iteration):
+        '''
+        Arguments:
 
+        batch: Training batch consisting of observations, actions, rewards, next observations, termination flags, and possibly additional info.
+        epoch: Current epoch number.
+        batch_number: Current batch number.
+        iteration: Current iteration number.
+        Functionality:
+
+        Performs training of the REDQ-SAC agent using the provided training batch.
+        Updates the policy and Q-functions based on the provided data batch.
+        Computes losses for actor, critic, and entropy coefficients.
+        Executes policy and Q-function optimization steps using Adam optimizers.
+        Handles updating the target network parameters.
+        '''
         self.i_update += 1
         update_policy = (self.i_update % self.q_updates_per_policy_update == 0)
 
@@ -194,6 +226,15 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
     def __post_init__(self):
+        '''
+        Functionality:
+        Initializes the SAC (Soft Actor-Critic) agent after the object creation.
+        Handles seed initialization for reproducibility.
+        Initializes the model based on the provided observation and action spaces.
+        Sets up optimizers for the actor and critic networks.
+        Configures scheduler for optimizer if specified in the configuration.
+        Handles target entropy setting and entropy coefficient optimization.
+        '''
         set_seed()
         if self.n_steps == 1:
             self.n_steps = 0
@@ -250,10 +291,23 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
 
     @staticmethod
     def clip_weights(model, max_value=0.98):
+        '''
+        Functionality:
+        Clamps the weights of the given model within a specified range (max_value).
+        '''
         for param in model.parameters():
             param.data.clamp_(-max_value, max_value)
 
     def train(self, batch, epoch, batch_index, iters):
+        '''
+        Functionality:
+        Handles the training process for the SAC (Soft Actor-Critic) agent using a provided batch of data.
+        Sets up necessary configurations and parameters for training.
+        Computes actor and critic losses, performs backpropagation, and updates the corresponding network parameters.
+        Manages entropy coefficient optimization (if enabled) and gradient clipping (if configured).
+        Updates target networks by polyak averaging.
+        Provides debugging information if specified in the configuration.
+        '''
         torch.autograd.set_detect_anomaly(True)
         o, a, r, o2, d, _ = batch
 
@@ -510,6 +564,11 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
 # https://github.com/yosider/ml-agents-1/blob/master/docs/Training-SAC.md
 @dataclass(eq=False)
 class TQCAgent(TrainingAgent):
+    '''
+    A class implementing a Twin Q Critic (TQC) Agent for reinforcement learning.
+    Inherits from TrainingAgent.
+    Manages training and setup of the TQC agent with various parameters and configurations.
+    '''
     observation_space: type
     action_space: type
     device: str = None
@@ -529,6 +588,16 @@ class TQCAgent(TrainingAgent):
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
     def __post_init__(self):
+        '''
+        Initializes the TQC agent after object creation.
+        Actions:
+        Sets the random seed.
+        Determines the computation device (CPU/GPU).
+        Creates the TQC model.
+        Sets up optimizers for the actor and critic networks.
+        Configures learning rate schedulers if specified.
+        Initializes entropy-related settings.
+        '''
         set_seed()
         if self.n_steps == 1:
             self.n_steps = 0
@@ -591,11 +660,23 @@ class TQCAgent(TrainingAgent):
 
     @staticmethod
     def clip_weights(model, max_value=0.98):
+        '''
+        Clips the weights of the given model within a specified range.
+        Actions:
+        Iterates through model parameters and clips each parameter's values within the specified range (max_value).
+        '''
         for param in model.parameters():
             param.data.clamp_(-max_value, max_value)
 
     # https://github.com/SamsungLabs/tqc_pytorch/blob/master/tqc/trainer.py
     def quantile_huber_loss_f(self, quantiles, samples):
+        '''
+        Computes the quantile Huber loss for the TQC algorithm.
+        Actions:
+        Calculates the quantile Huber loss using quantiles and samples.
+        Involves calculating pairwise deltas and applying Huber loss element-wise.
+        Returns the computed loss.
+        '''
         pairwise_delta = samples[:, None, None, :] - quantiles[:, :, :, None]  # batch x nets x quantiles x samples
         huber_loss = self.calculate_huber_loss(pairwise_delta)
 
@@ -607,10 +688,26 @@ class TQCAgent(TrainingAgent):
 
     @staticmethod
     def clip_model_weights(model, max_value=cfg.WEIGHT_CLIPPING_VALUE):
+        '''
+        Clips the weights of the model for TQC within a specified range.
+        Actions:
+        Iterates through model parameters and clips each parameter's values within the specified range.
+        '''
         for param in model.parameters():
             param.data.clamp_(-max_value, max_value)
 
     def train(self, batch, epoch, batch_index, iters):
+        '''
+        Manages the training loop for the TQC agent using the provided batch of data.
+        Actions:
+        Retrieves necessary data from the batch (observations, actions, rewards, next observations, dones).
+        Computes actor and critic losses.
+        Handles entropy coefficient optimization (if enabled).
+        Updates actor and critic networks based on computed losses.
+        Updates target networks via polyak averaging.
+        Provides debugging information if specified in the configuration settings.
+        Returns a dictionary containing loss and learning rate information.
+        '''
         o, a, r, o2, d, _ = batch
 
         batch_size = r.shape[0]
@@ -794,3 +891,4 @@ class TQCAgent(TrainingAgent):
             ret_dict["entropy_coef"] = alpha_t.item()
 
         return ret_dict
+

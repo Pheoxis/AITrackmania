@@ -101,6 +101,10 @@ def save_ghost(host='127.0.0.1', port=10000):
 
 
 def armin(tab):
+    '''
+    Functionality: Finds the index of the first non-zero element in the input array tab.
+    Returns: The index of the first non-zero element if found; otherwise, returns the index of the last element in the array.
+    '''
     nz = np.nonzero(tab)[0]
     if len(nz) != 0:
         return nz[0].item()
@@ -114,6 +118,11 @@ class Lidar:
         self.black_threshold = LIDAR_BLACK_THRESHOLD
 
     def _set_axis_lidar(self, im):
+        '''
+        Functionality:
+        Sets up the LiDAR axis based on the image passed.
+        Creates LiDAR axes for scanning the environment, defined by angles ranging from 90 to 280 degrees.
+        '''
         h, w, _ = im.shape
         self.h = h
         self.w = w
@@ -145,6 +154,14 @@ class Lidar:
         self.list_axis_y = list_ax_y
 
     def lidar_20(self, img, show=False):
+        '''
+        Functionality:
+        Calculates LiDAR distances given an image.
+        If the image dimensions differ from the previously set dimensions, updates the LiDAR axis.
+        Loops through the predefined LiDAR axes and calculates the distances.
+        Optionally displays LiDAR lines on the image if show is set to True.
+        Returns: An array of distances calculated by the LiDAR.
+        '''
         h, w, _ = img.shape
         if h != self.h or w != self.w:
             self._set_axis_lidar(img)

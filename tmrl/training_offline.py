@@ -61,6 +61,16 @@ class TrainingOffline:
     total_updates = 0
 
     def __post_init__(self):
+        '''
+        Initializes various attributes and objects after the instance is created.
+        Args: self (instance of the class)
+        Actions:
+        Sets the initial epoch to 0.
+        Initializes memory using a defined memory class (memory_cls), passing in parameters like nb_steps and device.
+        Retrieves observation_space and action_space from the environment class (env_cls).
+        Initializes agent using a training agent class (training_agent_cls) with the obtained observation_space, action_space, and device.
+        Logs the initial total samples in the memory.
+        '''
         device = self.device
         self.epoch = 0
         self.memory = self.memory_cls(nb_steps=self.steps, device=device)
@@ -76,11 +86,25 @@ class TrainingOffline:
         logging.info(f" Initial total_samples:{self.total_samples}")
 
     def update_buffer(self, interface):
+        '''
+        Updates the memory buffer by appending new data.
+        Args: interface (an object with a method retrieve_buffer to get new data)
+        Actions:
+        Retrieves buffer data from the interface and appends it to the memory.
+        Updates the count of total samples.
+        '''
         buffer = interface.retrieve_buffer()
         self.memory.append(buffer)
         self.total_samples += len(buffer)
 
     def check_ratio(self, interface):
+        '''
+       Checks the ratio of updates to total samples and waits for new samples if needed.
+        Args: interface (an object to retrieve buffer data)
+        Actions:
+        Calculates the ratio of updates to total samples and checks if it exceeds a defined limit.
+        If the ratio exceeds the limit or is initially -1, it waits for new samples before resuming training.
+        '''
         ratio = self.total_updates / self.total_samples if self.total_samples > 0.0 and self.total_samples >= self.start_training else -1.0
         if ratio > self.max_training_steps_per_env_step or ratio == -1.0:
             logging.info(f" Waiting for new samples")
@@ -93,6 +117,17 @@ class TrainingOffline:
             logging.info(f" Resuming training")
 
     def run_round(self, interface, stats_training, t_sample_prev):
+        '''
+        Runs a round of training using the memory data in batches.
+        Args:
+        interface (an object to retrieve buffer data)
+        stats_training (a list to store training statistics)
+        t_sample_prev (time of the previous sample)
+        Actions:
+        Loops through batches in memory and performs training using an agent.
+        Logs information related to batch checkpoints, training duration, and various statistics.
+        Updates model weights and checks the update-to-sample ratio.
+        '''
         for batch_index, batch in enumerate(self.memory):  # this samples a fixed number of batches
 
             t_sample = time.time()
@@ -145,6 +180,14 @@ class TrainingOffline:
             t_sample_prev = time.time()
 
     def run_epoch(self, interface):
+        '''
+        Runs multiple rounds within an epoch.
+        Args: interface (an object to retrieve buffer data)
+        Actions:
+        Manages the execution of multiple rounds within an epoch, calling run_round() for each round.
+        Collects and logs statistics related to memory size, round time, training time, and more.
+        Increments the epoch count at the end.
+        '''
         stats = []
         state = None
 

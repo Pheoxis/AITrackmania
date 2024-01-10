@@ -46,6 +46,13 @@ def get_local_buffer_sample_lidar_progress(prev_act, obs, rew, terminated, trunc
 
 
 def get_local_buffer_sample_mobilenet(prev_act, obs, rew, terminated, truncated, info):
+    '''
+    Prepares received data for storage in a local buffer
+    Returns:
+    A tuple containing modified versions of the received data (prev_act, obs, rew, terminated, truncated, info).
+    Functionality:
+    The function converts the reward rew into a NumPy float32 (rew_mod = np.float32(rew)).
+    '''
     obs_mod = obs
     rew_mod = np.float32(rew)
     terminated_mod = terminated
@@ -124,11 +131,32 @@ class MemoryTM(TorchMemory):
                          sample_preprocessor=sample_preprocessor,
                          crc_debug=crc_debug,
                          device=device)
+        '''
+        Arguments:
+
+        memory_size: Maximum size of the memory buffer.
+        batch_size: Size of batches used during training.
+        dataset_path: Path to the dataset.
+        imgs_obs: Number of observed images.
+        act_buf_len: Length of the action buffer.
+        nb_steps: Number of steps.
+        sample_preprocessor: A callable function for sample preprocessing.
+        crc_debug: Flag indicating whether to debug CRC (Cyclic Redundancy Check).
+        device: Device where the memory is stored (e.g., "cpu" or "cuda").
+        '''
 
     def append_buffer(self, buffer):
+        '''
+        This function is intended to be implemented in subclasses but is not implemented in the MemoryTM class itself.
+        Raises a NotImplementedError, prompting subclasses to implement this method based on specific requirements.
+        '''
         raise NotImplementedError
 
     def __len__(self):
+        '''
+        Calculates the length of the memory buffer by considering the number of samples stored in the memory.
+        If there is no data in the memory buffer, returns 0. Otherwise, returns the length of the data minus min_samples minus 1.
+        '''
         if len(self.data) == 0:
             return 0
         res = len(self.data[0]) - self.min_samples - 1
@@ -138,6 +166,10 @@ class MemoryTM(TorchMemory):
             return res
 
     def get_transition(self, item):
+        '''
+        Similar to append_buffer, this function is intended to be implemented in subclasses but is not implemented in the MemoryTM class itself.
+        Raises a NotImplementedError, prompting subclasses to implement this method based on specific requirements.
+        '''
         raise NotImplementedError
 
 
@@ -294,10 +326,26 @@ class MemoryTMLidarProgress(MemoryTM):
         return last_obs, new_act, rew, new_obs, terminated, truncated, info
 
     def load_imgs(self, item):
+        '''
+        Arguments:
+
+        item: Index used to load lidar images from stored data.
+        Functionality:
+
+        Loads a sequence of lidar images from the stored data, starting from the given index (item) with a specific number of observed lidar images (imgs_obs).
+        '''
         res = self.data[3][(item + self.start_imgs_offset):(item + self.start_imgs_offset + self.imgs_obs + 1)]
         return np.stack(res)
 
     def load_acts(self, item):
+        '''
+        Arguments:
+
+        item: Index used to load actions from stored data.
+        Functionality:
+
+        Loads a sequence of actions from the stored data, starting from the given index (item) with a specific length of action buffer (act_buf_len).
+        '''
         res = self.data[1][(item + self.start_acts_offset):(item + self.start_acts_offset + self.act_buf_len + 1)]
         return res
 
