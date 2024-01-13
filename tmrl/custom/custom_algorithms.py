@@ -14,7 +14,7 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import config.config_constants as cfg
 # local imports
 from custom.models import MLPActorCritic, REDQMLPActorCritic
-from custom.models.Sophy import QRCNNActorCritic
+from custom.models.Sophy import SophyActorCritic
 from custom.utils.nn import copy_shared, no_grad
 from training import TrainingAgent
 from util import cached_property
@@ -26,11 +26,11 @@ logging.basicConfig(level=logging.INFO)
 
 
 def set_seed(seed=cfg.SEED):
-    '''
+    """
     Functionality:
     Sets seeds for random number generators in NumPy and PyTorch for reproducibility.
     If CUDA (GPU) is available, it sets the seed for GPU operations and configures torch.backends.cudnn for deterministic behavior.
-    '''
+    """
     np.random.seed(seed)
     # Set seed for PyTorch CPU operations
     torch.manual_seed(seed)
@@ -347,26 +347,6 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
         q1 = self.model.q1(o, a)[:truncated_batch_size]
         q2 = self.model.q2(o, a)[:truncated_batch_size]
 
-        # if self.n_steps > 1:
-        #     print(f"r: {r}")
-        #     # Step 1: Precompute discount factors
-        #     discounts = self.gamma ** torch.arange(self.n_steps, device=r.device).unsqueeze(0)
-        #
-        # # Step 2: Compute indices for each step indices = torch.arange(batch_size, device=r.device).unsqueeze(1) +
-        # torch.arange(self.n_steps, device=r.device) indices = indices.clamp(max=len(r) - 1)
-        # Ensure indices do not go out of bounds
-        #
-        #     # Step 3: Select rewards and done flags for each step
-        #     step_rewards = r[indices]
-        #     step_dones = d[indices]
-        #
-        #     # Step 4: Create a mask for terminal states
-        #     terminal_mask = (1 - step_dones.cumprod(dim=1))
-        #
-        #     # Step 5: Calculate the n-step return
-        #     n_step_return = (step_rewards * terminal_mask * discounts).sum(dim=1)
-        #     print(f"n_step_return: {n_step_return}")
-
         if self.n_steps > 1:
             # print(f"r: {r}")
             n_step_return = torch.zeros(batch_size, device=r.device)
@@ -460,8 +440,6 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
                 # NB: We use an in-place operations "mul_", "add_" to update target
                 # params, as opposed to "mul" and "add", which would make new tensors.
                 p_targ.data.mul_(self.polyak).add_(p.data, alpha=(1 - self.polyak))
-                # p_targ.data.mul_(self.polyak)
-                # p_targ.data.add_((1 - self.polyak) * p.data)
 
         # FIXME: remove debug info
         with torch.no_grad():
@@ -558,21 +536,21 @@ class SpinupSacAgent(TrainingAgent):  # Adapted from Spinup
 
         return ret_dict
 
-    # TQC with learnable entropy coefficent ===================================================================
+# TQC with learnable entropy coefficent ===================================================================
 
 
 # https://github.com/yosider/ml-agents-1/blob/master/docs/Training-SAC.md
 @dataclass(eq=False)
 class TQCAgent(TrainingAgent):
-    '''
+    """
     A class implementing a Twin Q Critic (TQC) Agent for reinforcement learning.
     Inherits from TrainingAgent.
     Manages training and setup of the TQC agent with various parameters and configurations.
-    '''
+    """
     observation_space: type
     action_space: type
     device: str = None
-    model_cls: type = QRCNNActorCritic  # Replace with your QuantileActorCritic class
+    model_cls: type = SophyActorCritic  # Replace with your QuantileActorCritic class
     gamma: float = 0.99
     polyak: float = 0.995
     alpha: float = 0.2
@@ -588,7 +566,7 @@ class TQCAgent(TrainingAgent):
     model_nograd = cached_property(lambda self: no_grad(copy_shared(self.model)))
 
     def __post_init__(self):
-        '''
+        """
         Initializes the TQC agent after object creation.
         Actions:
         Sets the random seed.
@@ -597,7 +575,7 @@ class TQCAgent(TrainingAgent):
         Sets up optimizers for the actor and critic networks.
         Configures learning rate schedulers if specified.
         Initializes entropy-related settings.
-        '''
+        """
         set_seed()
         if self.n_steps == 1:
             self.n_steps = 0
@@ -660,23 +638,23 @@ class TQCAgent(TrainingAgent):
 
     @staticmethod
     def clip_weights(model, max_value=0.98):
-        '''
+        """
         Clips the weights of the given model within a specified range.
         Actions:
         Iterates through model parameters and clips each parameter's values within the specified range (max_value).
-        '''
+        """
         for param in model.parameters():
             param.data.clamp_(-max_value, max_value)
 
     # https://github.com/SamsungLabs/tqc_pytorch/blob/master/tqc/trainer.py
     def quantile_huber_loss_f(self, quantiles, samples):
-        '''
+        """
         Computes the quantile Huber loss for the TQC algorithm.
         Actions:
         Calculates the quantile Huber loss using quantiles and samples.
         Involves calculating pairwise deltas and applying Huber loss element-wise.
         Returns the computed loss.
-        '''
+        """
         pairwise_delta = samples[:, None, None, :] - quantiles[:, :, :, None]  # batch x nets x quantiles x samples
         huber_loss = self.calculate_huber_loss(pairwise_delta)
 
@@ -688,16 +666,16 @@ class TQCAgent(TrainingAgent):
 
     @staticmethod
     def clip_model_weights(model, max_value=cfg.WEIGHT_CLIPPING_VALUE):
-        '''
+        """
         Clips the weights of the model for TQC within a specified range.
         Actions:
         Iterates through model parameters and clips each parameter's values within the specified range.
-        '''
+        """
         for param in model.parameters():
             param.data.clamp_(-max_value, max_value)
 
     def train(self, batch, epoch, batch_index, iters):
-        '''
+        """
         Manages the training loop for the TQC agent using the provided batch of data.
         Actions:
         Retrieves necessary data from the batch (observations, actions, rewards, next observations, dones).
@@ -707,7 +685,7 @@ class TQCAgent(TrainingAgent):
         Updates target networks via polyak averaging.
         Provides debugging information if specified in the configuration settings.
         Returns a dictionary containing loss and learning rate information.
-        '''
+        """
         o, a, r, o2, d, _ = batch
 
         batch_size = r.shape[0]
@@ -834,13 +812,6 @@ class TQCAgent(TrainingAgent):
                 # params, as opposed to "mul" and "add", which would make new tensors.
                 p_targ.data.mul_(self.polyak)
                 p_targ.data.add_((1. - self.polyak) * p.data)
-
-        # ret_dict = {
-        #     "loss_actor": actor_loss.detach().item(),
-        #     "loss_critic": critic_loss.detach().item(),  # or any other relevant critic loss
-        #     "actor_lr": self.actor_optimizer.param_groups[0]['lr'],
-        #     "critic_lr": self.critic_optimizer.param_groups[0]['lr']
-        # }
 
         with torch.no_grad():
             ret_dict = dict()

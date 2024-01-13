@@ -39,7 +39,7 @@ if platform.system() == "Windows":
         Adjusts the input based on a standard normal distribution to invert or normalize the joystick input.
         Returns the transformed input within the range of -1 to 1.
         '''
-        if -0.2 < x < 0.2:
+        if -0.1 < x < 0.1:
             return 0.
         # Calculate the PDF of the standard normal distribution
         pdf = 1.05 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
