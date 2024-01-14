@@ -268,8 +268,6 @@ def iterate_epochs_tm(run_cls,
                 run_instance = updater_fn(run_instance, run_cls)
                 logging.info(f"Checkpoint updated in {time.time() - t1} seconds.")
 
-
-
         while run_instance.epoch < run_instance.epochs:
             yield run_instance.run_epoch(interface=interface)  # yield stats data frame
 
@@ -774,3 +772,4 @@ class RolloutWorker:
                     print_with_timestamp("model weights saved in history")
             self.actor = self.actor.load(self.model_path, device=self.device)
             print_with_timestamp("model weights have been updated")
+

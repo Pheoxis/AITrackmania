@@ -31,7 +31,7 @@ class RewardFunction:
                  nb_obs_backward=8,
                  nb_zero_rew_before_failure=10,
                  min_nb_steps_before_failure=int(2.5 * 20),
-                 max_dist_from_traj=15.0,
+                 max_dist_from_traj=16.5,
                  crash_penalty=10.0,
                  constant_penalty=0.0,
                  low_threshold=10,
@@ -109,6 +109,7 @@ class RewardFunction:
         self.index_divider = 100. / self.datalen
         print(f"n: {self.n}")
         self.furthest_race_progress = 0
+        self.medium_speed_bonus = cfg.SPEED_BONUS / 2
 
         if cfg.WANDB_DEBUG_REWARD:
             self.send_reward = []
@@ -194,6 +195,10 @@ class RewardFunction:
 
     def compute_reward(self, pos, crashed: bool = False, speed: float = None,
                        next_cp: bool = False, next_lap: bool = False, end_of_tack: bool = False):
+        '''
+        Calculates the reward based on the car's position, speed, and track progress.
+        Handles penalties for crashes, speed bonuses, lap completions, etc.
+        '''
         terminated = False
         self.step_counter += 1
         self.prev_idx = self.cur_idx
@@ -250,11 +255,14 @@ class RewardFunction:
                 penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
                 reward += penalty
 
+        if min_dist > self.max_dist_from_traj:
+            terminated = True
+
         # deviation_penalty
-        # if best_index != self.cur_idx:
-        #     print(f"before: {reward}")
-        #     reward -= abs((2 / (1 + np.exp(-0.025 * min_dist))) - 1)
-        #     print(f"after: {reward}")
+        if min_dist > 13.5:
+            # print(f"before: {reward}")
+            reward -= abs((2 / (1 + np.exp(-0.025 * min_dist))) - 1)
+            # print(f"after: {reward}")
 
         if next_lap and self.cur_idx > self.prev_idx:
             self.new_lap = True
@@ -282,6 +290,17 @@ class RewardFunction:
             self.new_lap = False
             self.near_finish = False
 
+        if speed > cfg.SPEED_MIN_THRESHOLD:
+            speed_reward = (speed - cfg.SPEED_MIN_THRESHOLD) * self.speed_bonus  # x / 250 * 0.04 = 0.00016 * x
+            reward += speed_reward
+        elif speed < -0.5:
+
+            penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
+            reward += penalty
+        elif speed > 1.0:
+            speed_reward = (speed / 250) * 0.04
+            reward += speed_reward
+
         if crashed:
             reward -= abs(self.crash_penalty)
             # self.crash_counter += 1
@@ -307,7 +326,6 @@ class RewardFunction:
         '''
         if terminated or end_of_track:
             if end_of_track:
-
                 self.furthest_race_progress = 1.0
             print(f"Total reward of the run: {self.episode_reward}")
             if self.episode_reward != 0.0:
@@ -406,4 +424,3 @@ class RewardFunction:
         # self.checkpoint_cur_cooldown = cfg.CHECKPOINT_COOLDOWN
 
         self.furthest_race_progress = 0
-

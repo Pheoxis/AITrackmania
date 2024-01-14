@@ -233,9 +233,9 @@ class TrainingOffline:
                 pro.stop()
                 logging.info(pro.output_text(unicode=True, color=False, show_all=True))
 
-        if len(self.memory.end_episodes_indices) > 1:
-            print(f"end_episodes_indices: {self.memory.end_episodes_indices}")
-            print(f"reward_sums: {self.memory.reward_sums}")
+        # if len(self.memory.end_episodes_indices) > 1:
+            # print(f"end_episodes_indices: {self.memory.end_episodes_indices}")
+            # print(f"reward_sums: {self.memory.reward_sums}")
 
         self.epoch += 1
         return stats

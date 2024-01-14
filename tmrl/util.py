@@ -119,8 +119,6 @@ def partial_to_dict(p: functools.partial, version="3"):
     output = {FKEY: p.func.__module__ + ":" + p.func.__qualname__, **simple, **nested}
     return dict(output, __format_version__=version) if version else output
 
-
-
 def get_class_or_function(func):
     module, name = func.split(":")
     return getattr(import_module(module), name)

@@ -354,7 +354,6 @@ class R2D2Memory(Memory, ABC):
                     return result
                 else:
                     result = tuple(range(len(self) - batch_size, len(self) - 1))
-                    # print(result)
                     self.cur_idx = 0
                     return result
         else:
@@ -407,9 +406,7 @@ class R2D2Memory(Memory, ABC):
                     result = tuple(range(self.cur_idx, self.cur_idx + batch_size))
 
                     self.cur_idx += batch_size
-
                     self.isNewEpisode = False
-
                     return result
             else:
 
@@ -442,8 +439,6 @@ class R2D2Memory(Memory, ABC):
         Collates the sampled data into a batch using the collate method and returns it.
         '''
         indices = self.sample_indices()
-        # print(f"indices[0]: {indices[0]}")
-        # print(f"indices[-1]: {indices[-1]}")
         batch = [self[idx] for idx in indices]
         batch = self.collate(batch, self.device)
         return batch

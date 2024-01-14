@@ -8,7 +8,7 @@ from torch import nn
 from torch.autograd import Variable
 from torch.distributions import Normal
 from torch.nn import MultiheadAttention
-from torchrl.modules import NoisyLinear, TanhNormal
+from torchrl.modules import NoisyLinear
 
 import config.config_constants as cfg
 import config.config_objects as cfo
@@ -43,15 +43,6 @@ def lstm(input_size, rnn_size, rnn_len, dropout: float = 0.0):
     return lstm_layers
 
 
-# def mlp(sizes, dim_obs, activation=nn.ReLU):
-#     layers = []
-#     for j in range(len(sizes) - 1):
-#         if j == 0:
-#             layers += [nn.Linear(dim_obs, sizes[j + 1]), activation()]
-#         else:
-#             layers += [nn.Linear(sizes[j], sizes[j + 1]), activation()]
-#     return nn.Sequential(*layers)
-
 def mlp(sizes, dim_obs, activation=nn.ReLU):
     """
     Build a neural network with the specified sizes, input dimension, and activation function.
@@ -76,8 +67,8 @@ def mlp(sizes, dim_obs, activation=nn.ReLU):
     return model
 
 
-class QRCNNQFunction(nn.Module):
-    # domyślne wartości parametrów muszą się zgadzać
+class QRCNNSophy(nn.Module):
+    # default value for each argument must be the same in every class in this file!!!
     def __init__(
             self, observation_space, action_space, rnn_sizes=cfg.RNN_SIZES,
             rnn_lens=cfg.RNN_LENS, mlp_branch_sizes=cfg.API_MLP_SIZES,
@@ -100,26 +91,21 @@ class QRCNNQFunction(nn.Module):
 
         self.mlp_api = mlp(mlp_branch_sizes, dim_obs, activation)
 
+        # self.attentionAPI = MultiheadAttention(embed_dim=mlp_branch_sizes[-1], num_heads=2, batch_first=True)
+
         if cfg.API_LAYERNORM:
             self.layernorm_api = nn.LayerNorm(dim_obs)
 
         if cfg.MLP_LAYERNORM:
             self.layernorm_mlp = nn.LayerNorm(mlp_branch_sizes[-1])
 
-        self.rnn_block_api = lstm(
+        self.rnn_block_api = gru(
             mlp_branch_sizes[-1] + dim_act,
             rnn_sizes[0],
             rnn_lens[0]
         )
 
-        self.attention = MultiheadAttention(embed_dim=rnn_sizes[0], num_heads=2, batch_first=True)
-
-        # self.rnn_block_cat = lstm(
-        #     self.cnn_module.mlp_out_size + rnn_sizes[0] + dim_act,
-        #     rnn_sizes[1],
-        #     rnn_lens[1],
-        #     dropout=cfg.RNN_DROPOUT
-        # )
+        self.attentionRNN = MultiheadAttention(embed_dim=rnn_sizes[0], num_heads=2, batch_first=True)
 
         if cfg.NOISY_LINEAR_CRITIC:
             self.model_out = NoisyLinear(
@@ -136,14 +122,11 @@ class QRCNNQFunction(nn.Module):
 
         self.h0 = None
         self.c0 = None
-        # self.h1 = None
-        # self.c1 = None
         self.rnn_sizes = list(rnn_sizes)
         self.rnn_lens = list(rnn_lens)
 
     def forward(self, observation, act, save_hidden=False):
         self.rnn_block_api.flatten_parameters()
-        # self.rnn_block_cat.flatten_parameters()
 
         batch_size = observation[0].shape[0]
         if type(observation) is tuple:
@@ -154,20 +137,13 @@ class QRCNNQFunction(nn.Module):
             h0 = Variable(
                 torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
             )
-            c0 = Variable(
-                torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
-            )
-            # h1 = Variable(
-            #     torch.zeros((self.rnn_lens[1], self.rnn_sizes[1]), device=device)
+            # c0 = Variable(
+            #     torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
             # )
-            # c1 = Variable(
-            #     torch.zeros((self.rnn_lens[1], self.rnn_sizes[1]), device=device)
-            # )
+
         else:
             h0 = self.h0
-            c0 = self.c0
-            # h1 = self.h1
-            # c1 = self.c1
+            # c0 = self.c0
 
         for index, _ in enumerate(observation):
             observation[index] = observation[index].view(batch_size, -1)
@@ -181,18 +157,18 @@ class QRCNNQFunction(nn.Module):
 
         mlp_api_out = self.activation(self.mlp_api(obs_seq_cat))
 
+        # mlp_api_out, _ = self.attentionAPI(mlp_api_out, mlp_api_out, mlp_api_out)
+
         if cfg.MLP_LAYERNORM:
             mlp_api_out = self.layernorm_mlp(mlp_api_out)
 
         cat_mlp_api_act_out = torch.cat([mlp_api_out, act], dim=-1)
 
-        # rnn_block_api_out, (h0, c0) = self.rnn_block_api(mlp_api_out, (h0, c0))
+        # rnn_block_api_out, (h0, c0) = self.rnn_block_api(cat_mlp_api_act_out, (h0, c0))
 
-        # img_api_out = torch.cat([cat_mlp_api_act_out, act], dim=-1)
+        rnn_block_api_out, h0 = self.rnn_block_api(cat_mlp_api_act_out, h0)
 
-        rnn_block_api_out, (h0, c0) = self.rnn_block_api(cat_mlp_api_act_out, (h0, c0))
-
-        attn_output, _ = self.attention(rnn_block_api_out, rnn_block_api_out, rnn_block_api_out)
+        attn_output, _ = self.attentionRNN(rnn_block_api_out, rnn_block_api_out, rnn_block_api_out)
 
         model_out = self.model_out(attn_output)
 
@@ -201,15 +177,13 @@ class QRCNNQFunction(nn.Module):
 
         if save_hidden:
             self.h0 = h0
-            self.c0 = c0
-            # self.h1 = h1
-            # self.c1 = c1
+            # self.c0 = c0
 
         return torch.squeeze(model_out, -1)
 
 
-class SquashedActorQRCNN(TorchActorModule):
-    # domyślne wartości parametrów muszą się zgadzać
+class SquashedActorSophy(TorchActorModule):
+    # default value for each argument must be the same in every class in this file!!!
     def __init__(
             self, observation_space, action_space, rnn_sizes=cfg.RNN_SIZES,
             rnn_lens=cfg.RNN_LENS, mlp_branch_sizes=cfg.API_MLP_SIZES,
@@ -234,26 +208,21 @@ class SquashedActorQRCNN(TorchActorModule):
 
         self.mlp_api = mlp(mlp_branch_sizes, dim_obs, activation)
 
+        # self.attentionAPI = MultiheadAttention(embed_dim=mlp_branch_sizes[-1], num_heads=2, batch_first=True)
+
         if cfg.API_LAYERNORM:
             self.layernorm_api = nn.LayerNorm(dim_obs)
 
         if cfg.MLP_LAYERNORM:
             self.layernorm_mlp = nn.LayerNorm(mlp_branch_sizes[-1])
 
-        self.rnn_block_api = lstm(
+        self.rnn_block_api = gru(
             mlp_branch_sizes[-1],
             rnn_sizes[0],
             rnn_lens[0]
         )
 
-        self.attention = MultiheadAttention(embed_dim=rnn_sizes[0], num_heads=2, batch_first=True)
-
-        # self.rnn_block_cat = lstm(
-        #     self.cnn_module.mlp_out_size + rnn_sizes[0],
-        #     rnn_sizes[1],
-        #     rnn_lens[1],
-        #     dropout=cfg.RNN_DROPOUT
-        # )
+        self.attentionRNN = MultiheadAttention(embed_dim=rnn_sizes[0], num_heads=2, batch_first=True)
 
         if cfg.NOISY_LINEAR_ACTOR:
             self.model_out = NoisyLinear(
@@ -275,8 +244,6 @@ class SquashedActorQRCNN(TorchActorModule):
         self.log_std_max = LOG_STD_MAX
         self.h0 = None
         self.c0 = None
-        # self.h1 = None
-        # self.c1 = None
         self.rnn_sizes = list(rnn_sizes)
         self.rnn_lens = list(rnn_lens)
 
@@ -293,27 +260,15 @@ class SquashedActorQRCNN(TorchActorModule):
             h0 = Variable(
                 torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
             )
-            c0 = Variable(
-                torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
-            )
-            # h1 = Variable(
-            #     torch.zeros((self.rnn_lens[1], self.rnn_sizes[1]), device=device)
-            # )
-            # c1 = Variable(
-            #     torch.zeros((self.rnn_lens[1], self.rnn_sizes[1]), device=device)
+            # c0 = Variable(
+            #     torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
             # )
         else:
             h0 = self.h0
-            c0 = self.c0
-            # h1 = self.h1
-            # c1 = self.c1
+            # c0 = self.c0
 
         for index, _ in enumerate(observation):
             observation[index] = observation[index].view(batch_size, -1)
-
-        # observation_except_img = observation[:self.img_index]
-        # if len(observation) > self.img_index + 1:
-        #     observation_except_img += observation[(self.img_index + 1):]
 
         # Pack the tensors in observation_except_img to handle variable sequence lengths
         obs_seq_cat = torch.cat(observation, -1)
@@ -324,12 +279,15 @@ class SquashedActorQRCNN(TorchActorModule):
 
         mlp_api_out = self.activation(self.mlp_api(obs_seq_cat))
 
+        # mlp_api_out, _ = self.attentionAPI(mlp_api_out, mlp_api_out, mlp_api_out)
+
         if cfg.MLP_LAYERNORM:
             mlp_api_out = self.layernorm_mlp(mlp_api_out)
 
-        rnn_block_api_out, (h0, c0) = self.rnn_block_api(mlp_api_out, (h0, c0))
+        # rnn_block_api_out, (h0, c0) = self.rnn_block_api(mlp_api_out, (h0, c0))
+        rnn_block_api_out, h0 = self.rnn_block_api(mlp_api_out, h0)
 
-        attn_output, _ = self.attention(rnn_block_api_out, rnn_block_api_out, rnn_block_api_out)
+        attn_output, _ = self.attentionRNN(rnn_block_api_out, rnn_block_api_out, rnn_block_api_out)
 
         model_out = self.model_out(attn_output)
 
@@ -354,7 +312,7 @@ class SquashedActorQRCNN(TorchActorModule):
             # NOTE: The correction formula is a little bit magic. To get an understanding
             # of where it comes from, check out the original SAC paper (arXiv 1801.01290)
             # and look in appendix C. This is a more numerically-stable equivalent to Eq 21.
-            # Try deriving it yourself as a (very difficult) exercise. 🙂
+            # Try deriving it yourself as a (very difficult) exercise. :)
             logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
             logp_pi -= (2 * (np.log(2) - pi_action - F.softplus(-2 * pi_action))).sum(axis=1)
         else:
@@ -367,9 +325,7 @@ class SquashedActorQRCNN(TorchActorModule):
 
         if save_hidden:
             self.h0 = h0
-            self.c0 = c0
-            # self.h1 = h1
-            # self.c1 = c1
+            # self.c0 = c0
 
         return pi_action, logp_pi
 
@@ -381,8 +337,8 @@ class SquashedActorQRCNN(TorchActorModule):
             return a.cpu().numpy()
 
 
-class QRCNNActorCritic(nn.Module):
-    # domyślne wartości parametrów muszą się zgadzać
+class SophyActorCritic(nn.Module):
+    # default value for each argument must be the same in every class in this file!!!
     def __init__(
             self, observation_space, action_space, rnn_sizes=cfg.RNN_SIZES,
             rnn_lens=cfg.RNN_LENS, mlp_branch_sizes=cfg.API_MLP_SIZES,
@@ -396,12 +352,12 @@ class QRCNNActorCritic(nn.Module):
         torch.backends.cudnn.benchmark = False
 
         # build policy and value functions
-        self.actor = SquashedActorQRCNN(
+        self.actor = SquashedActorSophy(
             observation_space, action_space, rnn_sizes, rnn_lens, mlp_branch_sizes, activation
         )
-        self.q1 = QRCNNQFunction(
+        self.q1 = QRCNNSophy(
             observation_space, action_space, rnn_sizes, rnn_lens, mlp_branch_sizes, activation
         )
-        self.q2 = QRCNNQFunction(
+        self.q2 = QRCNNSophy(
             observation_space, action_space, rnn_sizes, rnn_lens, mlp_branch_sizes, activation
         )
