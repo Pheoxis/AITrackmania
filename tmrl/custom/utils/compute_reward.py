@@ -262,6 +262,7 @@ class RewardFunction:
         if min_dist > 17.5:
             # print(f"before: {reward}")
             reward -= abs((2 / (1 + np.exp(-0.025 * (min_dist - 12.)))) - 1)
+
             # print(f"after: {reward}")
 
         if next_lap and self.cur_idx > self.prev_idx:

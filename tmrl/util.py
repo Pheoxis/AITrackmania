@@ -119,14 +119,12 @@ def partial_to_dict(p: functools.partial, version="3"):
     output = {FKEY: p.func.__module__ + ":" + p.func.__qualname__, **simple, **nested}
     return dict(output, __format_version__=version) if version else output
 
-
 def get_class_or_function(func):
     module, name = func.split(":")
     return getattr(import_module(module), name)
 
 
 def partial_from_args(func: Union[str, callable], kwargs: Dict[str, str]):
-    # logging.info(func, kwargs)  # useful to visualize the parsing process
     func = get_class_or_function(func) if isinstance(func, str) else func
     keys = {k.split('.')[0] for k in kwargs}
     keywords = {}

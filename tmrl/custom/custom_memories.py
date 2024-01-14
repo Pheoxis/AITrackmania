@@ -1056,21 +1056,6 @@ class MemoryR2D2woImages(R2D2Memory):
         last_act_buf = acts[:-1]
         new_act_buf = acts[1:]
 
-        # imgs = self.load_imgs(item)
-        # imgs_last_obs = imgs[:-1]
-        # imgs_new_obs = imgs[1:]
-        #
-        # # if a reset transition has influenced the observation, special care must be taken
-        # last_eoes = self.data[16][idx_now - self.min_samples:idx_now]  # self.min_samples values
-        # last_eoe_idx = last_true_in_list(last_eoes)  # last occurrence of True
-        #
-        # assert last_eoe_idx is None or last_eoes[last_eoe_idx], f"last_eoe_idx:{last_eoe_idx}"
-        #
-        # if last_eoe_idx is not None:
-        #     replace_hist_before_eoe(hist=new_act_buf, eoe_idx_in_hist=last_eoe_idx - self.start_acts_offset - 1)
-        #     replace_hist_before_eoe(hist=last_act_buf, eoe_idx_in_hist=last_eoe_idx - self.start_acts_offset)
-        #     replace_hist_before_eoe(hist=imgs_new_obs, eoe_idx_in_hist=last_eoe_idx - self.start_imgs_offset - 1)
-        #     replace_hist_before_eoe(hist=imgs_last_obs, eoe_idx_in_hist=last_eoe_idx - self.start_imgs_offset)
 
         last_obs = (
             self.data[2][idx_last],  # 0
@@ -1267,22 +1252,6 @@ class MemoryR2D2Sophy(R2D2Memory):
         acts = self.load_acts(item)
         last_act_buf = acts[:-1]
         new_act_buf = acts[1:]
-
-        # imgs = self.load_imgs(item)
-        # imgs_last_obs = imgs[:-1]
-        # imgs_new_obs = imgs[1:]
-        #
-        # # if a reset transition has influenced the observation, special care must be taken
-        # last_eoes = self.data[16][idx_now - self.min_samples:idx_now]  # self.min_samples values
-        # last_eoe_idx = last_true_in_list(last_eoes)  # last occurrence of True
-        #
-        # assert last_eoe_idx is None or last_eoes[last_eoe_idx], f"last_eoe_idx:{last_eoe_idx}"
-        #
-        # if last_eoe_idx is not None:
-        #     replace_hist_before_eoe(hist=new_act_buf, eoe_idx_in_hist=last_eoe_idx - self.start_acts_offset - 1)
-        #     replace_hist_before_eoe(hist=last_act_buf, eoe_idx_in_hist=last_eoe_idx - self.start_acts_offset)
-        #     replace_hist_before_eoe(hist=imgs_new_obs, eoe_idx_in_hist=last_eoe_idx - self.start_imgs_offset - 1)
-        #     replace_hist_before_eoe(hist=imgs_last_obs, eoe_idx_in_hist=last_eoe_idx - self.start_imgs_offset)
 
         last_obs = (
             self.data[2][idx_last],  # 0

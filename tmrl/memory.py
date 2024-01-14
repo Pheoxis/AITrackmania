@@ -339,12 +339,12 @@ class R2D2Memory(Memory, ABC):
         '''
         self.end_episodes_indices = self.find_zero_rewards_indices(self.data[self.rewards_index])
         self.reward_sums = [self.data[self.rewards_index][index]['reward_sum'] for index in self.end_episodes_indices]
-        # print(self.end_episodes_indices)
         batch_size = self.batch_size
 
         if len(self.end_episodes_indices) == 0:
             if self.cur_idx == 0:
                 self.cur_idx += int(batch_size * self.rewind)
+
                 result = tuple(range(0, self.cur_idx))
                 return result
             else:
@@ -395,18 +395,21 @@ class R2D2Memory(Memory, ABC):
                         start_idx = max(0, end_idx - batch_size)
 
                     result = tuple(range(start_idx, end_idx))
+
                     return result
                 else:
-                    # print("batch 5")
+
                     if self.previous_episode < 0:
                         self.previous_episode = 0
 
                     self.cur_idx = self.previous_episode + self.chosen_burn_in
                     result = tuple(range(self.cur_idx, self.cur_idx + batch_size))
+
                     self.cur_idx += batch_size
                     self.isNewEpisode = False
                     return result
             else:
+
                 self.cur_idx -= int(batch_size * self.rewind)
 
                 if self.cur_idx + batch_size >= self.chosen_episode:

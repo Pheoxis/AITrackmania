@@ -185,12 +185,6 @@ class TM2020InterfaceTrackMap(TM2020InterfaceLidar):
             (_, i_r_min) = tree_r.query(self.map_left.T[i_l_min])
             i_r_min = i_r_min + j_min
 
-            # #calculate the endpoint for the other side of the track
-            # j_min = max(i_l+look_ahead_distance-nearby_correction,0) # lower bound
-            # j_max = min(i_l+look_ahead_distance+nearby_correction,len(map_left.T)-1) # upper bound
-            # tree_r_far = spatial.KDTree(map_right.T[j_min:j_max]) # look up the index of the closest point
-            # (_, i_r_max) = tree_r_far.query(map_left.T[i_l_max])
-            # i_r_max = i_r_max + j_min
 
         else:
             # print("right side is closer")
