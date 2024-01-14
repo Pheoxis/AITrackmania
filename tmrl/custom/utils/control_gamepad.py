@@ -32,56 +32,10 @@ if platform.system() == "Windows":
         gamepad.left_joystick_float(mapped_steering(control[2]), 0.0)  # turn
         gamepad.update()
 
-
-    # def upside_down_normal_y(x, mu=0, sigma=0.3, epsilon=0.45):
-    #     """
-    #     Transforms a joystick input for vertical (Y-axis) movement.
-    #     Actions:
-    #     Adjusts the input based on a standard normal distribution to invert or normalize the joystick input.
-    #     Returns the transformed input within the range of -1 to 1.
-    #     """
-    #
-    #     # Calculate the PDF of the standard normal distribution
-    #     pdf = 1.05 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
-    #
-    #     # Take the negative of the standard normal PDF to flip it
-    #     upside_down_pdf = -pdf + 1.045
-    #
-    #     # Soft transition using a sigmoid-like function
-    #     # It gradually transitions the value to 0 as x approaches -epsilon and epsilon
-    #     transition = 1 / (1 + np.exp(-10 * (abs(x) - epsilon)))
-    #
-    #     # Apply the transition to the upside_down_pdf
-    #     result = transition * upside_down_pdf
-    #
-    #     if x < 0:
-    #         return max([-result, -1.])
-    #     else:
-    #         return min([result, 1.])
     def mapped_steering(x, k=15):
         sigmoid = 1 / (1 + np.exp(-k * (x + 0.4))) * 1 / (1 + np.exp(-k * (0.4 - x)))
         return np.tan(x) / np.tan(1) * (1 - sigmoid)
 
-
-    # def upside_down_normal_y(x, mu=0, sigma=0.4):
-    #     """
-    #     Transforms a joystick input for vertical (Y-axis) movement.
-    #     Actions:
-    #     Adjusts the input based on a standard normal distribution to invert or normalize the joystick input.
-    #     Returns the transformed input within the range of -1 to 1.
-    #     """
-    #     if -0.2 < x < 0.2:
-    #         return 0.
-    #     # Calculate the PDF of the standard normal distribution
-    #     pdf = 1.05 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
-    #
-    #     # Take the negative of the standard normal PDF to flip it
-    #     upside_down_pdf = -pdf + 1.045
-    #
-    #     if x < 0:
-    #         return max([-upside_down_pdf, -1.])
-    #     else:
-    #         return min([upside_down_pdf, 1.])
 
     def gamepad_reset(gamepad):
         """
