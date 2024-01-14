@@ -31,7 +31,7 @@ class RewardFunction:
                  nb_obs_backward=8,
                  nb_zero_rew_before_failure=10,
                  min_nb_steps_before_failure=int(2.5 * 20),
-                 max_dist_from_traj=15.0,
+                 max_dist_from_traj=23.5,
                  crash_penalty=10.0,
                  constant_penalty=0.0,
                  low_threshold=10,
@@ -255,11 +255,14 @@ class RewardFunction:
                 penalty = 1 / (1 + np.exp(-0.1 * speed - 3)) - 1
                 reward += penalty
 
+        if min_dist > self.max_dist_from_traj:
+            terminated = True
+
         # deviation_penalty
-        # if best_index != self.cur_idx:
-        #     print(f"before: {reward}")
-        #     reward -= abs((2 / (1 + np.exp(-0.025 * min_dist))) - 1)
-        #     print(f"after: {reward}")
+        if min_dist > 17.5:
+            # print(f"before: {reward}")
+            reward -= abs((2 / (1 + np.exp(-0.025 * (min_dist - 12.)))) - 1)
+            # print(f"after: {reward}")
 
         if next_lap and self.cur_idx > self.prev_idx:
             self.new_lap = True
@@ -318,9 +321,9 @@ class RewardFunction:
         return reward, terminated, self.failure_counter, self.episode_reward
 
     def log_model_run(self, terminated, end_of_track):
-        '''
+        """
          Logs the summary of the run, updating reward-related parameters and logging information to Weights & Biases (wandb).
-        '''
+        """
         if terminated or end_of_track:
             if end_of_track:
                 self.furthest_race_progress = 1.0
@@ -361,15 +364,15 @@ class RewardFunction:
                     wandb.log({"Run reward": self.episode_reward})
 
     def compute_race_progress(self):
-        '''
+        """
         Computes the current race progress based on the car's position in the track.
-        '''
+        """
         return self.cur_idx / len(self.data)
 
     def calculate_ema(self, alpha: float = 0.25):
-        '''
+        """
         Calculates the Exponential Moving Average (EMA) of the reward sum list.
-        '''
+        """
         ema_values = [self.reward_sum_list[0]]
         for i in range(1, len(self.reward_sum_list)):
             ema = alpha * self.reward_sum_list[i] + (1 - alpha) * ema_values[-1]

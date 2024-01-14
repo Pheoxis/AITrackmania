@@ -24,6 +24,7 @@ def record_reward_dist(path_reward=PATH_REWARD):
     path = path_reward
 
     is_recording = False
+    print("Press \'e\' to start recording")
     while True:
         if keyboard.is_pressed('e'):
             logging.info(f"start recording")

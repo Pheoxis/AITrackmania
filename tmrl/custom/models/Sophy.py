@@ -17,7 +17,7 @@ from custom.models.model_constants import LOG_STD_MIN, LOG_STD_MAX
 
 
 # https://discuss.pytorch.org/t/dropout-in-lstm-during-eval-mode/120177
-def gru(input_size, rnn_size, rnn_len, dropout: float = 0.1):
+def gru(input_size, rnn_size, rnn_len, dropout: float = 0.0):
     num_rnn_layers = rnn_len
     assert num_rnn_layers >= 1
     hidden_size = rnn_size
@@ -89,7 +89,7 @@ class QRCNNSophy(nn.Module):
         dim_act = action_space.shape[0]
         self.num_quantiles = cfo.ALG_CONFIG["QUANTILES_NUMBER"]
 
-        self.mlp_api = mlp(mlp_branch_sizes, dim_obs, activation)
+        self.mlp_api = mlp(mlp_branch_sizes[:-1], dim_obs, activation)
 
         # self.attentionAPI = MultiheadAttention(embed_dim=mlp_branch_sizes[-1], num_heads=2, batch_first=True)
 
@@ -97,15 +97,16 @@ class QRCNNSophy(nn.Module):
             self.layernorm_api = nn.LayerNorm(dim_obs)
 
         if cfg.MLP_LAYERNORM:
-            self.layernorm_mlp = nn.LayerNorm(mlp_branch_sizes[-1])
+            self.layernorm_mlp = nn.LayerNorm(mlp_branch_sizes[-2])
 
-        self.rnn_block_api = gru(
-            mlp_branch_sizes[-1] + dim_act,
-            rnn_sizes[0],
-            rnn_lens[0]
-        )
+        # self.rnn_block_api = gru(
+        #     mlp_branch_sizes[-1] + dim_act,
+        #     rnn_sizes[0],
+        #     rnn_lens[0]
+        # )
+        self.mlp_act = mlp([mlp_branch_sizes[-1]], mlp_branch_sizes[-2] + dim_act, activation)
 
-        self.attentionRNN = MultiheadAttention(embed_dim=rnn_sizes[0], num_heads=2, batch_first=True)
+        self.attentionRNN = MultiheadAttention(embed_dim=mlp_branch_sizes[-1], num_heads=2, batch_first=True)
 
         if cfg.NOISY_LINEAR_CRITIC:
             self.model_out = NoisyLinear(
@@ -115,7 +116,7 @@ class QRCNNSophy(nn.Module):
                 std_init=0.01
             )
         else:
-            self.model_out = nn.Linear(rnn_sizes[0], self.num_quantiles)
+            self.model_out = nn.Linear(mlp_branch_sizes[-1], self.num_quantiles)
 
         if cfg.MODEL_CONFIG["OUTPUT_DROPOUT"] > 0.0:
             self.dropout = nn.Dropout(cfg.MODEL_CONFIG["OUTPUT_DROPOUT"])
@@ -126,24 +127,24 @@ class QRCNNSophy(nn.Module):
         self.rnn_lens = list(rnn_lens)
 
     def forward(self, observation, act, save_hidden=False):
-        self.rnn_block_api.flatten_parameters()
+        # self.rnn_block_api.flatten_parameters()
 
         batch_size = observation[0].shape[0]
         if type(observation) is tuple:
             observation = list(observation)
 
-        if not save_hidden or self.h0 is None or self.c0 is None:
-            device = observation[0].device
-            h0 = Variable(
-                torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
-            )
-            # c0 = Variable(
-            #     torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
-            # )
-
-        else:
-            h0 = self.h0
-            # c0 = self.c0
+        # if not save_hidden or self.h0 is None or self.c0 is None:
+        #     device = observation[0].device
+        #     h0 = Variable(
+        #         torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
+        #     )
+        #     # c0 = Variable(
+        #     #     torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
+        #     # )
+        #
+        # else:
+        #     h0 = self.h0
+        #     # c0 = self.c0
 
         for index, _ in enumerate(observation):
             observation[index] = observation[index].view(batch_size, -1)
@@ -166,17 +167,19 @@ class QRCNNSophy(nn.Module):
 
         # rnn_block_api_out, (h0, c0) = self.rnn_block_api(cat_mlp_api_act_out, (h0, c0))
 
-        rnn_block_api_out, h0 = self.rnn_block_api(cat_mlp_api_act_out, h0)
+        # rnn_block_api_out, h0 = self.rnn_block_api(cat_mlp_api_act_out, h0)
 
-        attn_output, _ = self.attentionRNN(rnn_block_api_out, rnn_block_api_out, rnn_block_api_out)
+        mlp_api_out = self.mlp_act(cat_mlp_api_act_out)
+
+        attn_output, _ = self.attentionRNN(mlp_api_out, mlp_api_out, mlp_api_out)
 
         model_out = self.model_out(attn_output)
 
         if cfg.OUTPUT_DROPOUT > 0.0:
             model_out = self.dropout(model_out)
 
-        if save_hidden:
-            self.h0 = h0
+        # if save_hidden:
+        #     self.h0 = h0
             # self.c0 = c0
 
         return torch.squeeze(model_out, -1)
@@ -216,13 +219,13 @@ class SquashedActorSophy(TorchActorModule):
         if cfg.MLP_LAYERNORM:
             self.layernorm_mlp = nn.LayerNorm(mlp_branch_sizes[-1])
 
-        self.rnn_block_api = gru(
-            mlp_branch_sizes[-1],
-            rnn_sizes[0],
-            rnn_lens[0]
-        )
+        # self.rnn_block_api = gru(
+        #     mlp_branch_sizes[-1],
+        #     rnn_sizes[0],
+        #     rnn_lens[0]
+        # )
 
-        self.attentionRNN = MultiheadAttention(embed_dim=rnn_sizes[0], num_heads=2, batch_first=True)
+        self.attentionRNN = MultiheadAttention(embed_dim=mlp_branch_sizes[-1], num_heads=2, batch_first=True)
 
         if cfg.NOISY_LINEAR_ACTOR:
             self.model_out = NoisyLinear(
@@ -232,7 +235,7 @@ class SquashedActorSophy(TorchActorModule):
                 std_init=0.01
             )
         else:
-            self.model_out = nn.Linear(rnn_sizes[0], mlp_out_size)
+            self.model_out = nn.Linear(mlp_branch_sizes[-1], mlp_out_size)
 
         if cfg.MODEL_CONFIG["OUTPUT_DROPOUT"] > 0.0:
             self.dropout = nn.Dropout(cfg.MODEL_CONFIG["OUTPUT_DROPOUT"])
@@ -248,23 +251,23 @@ class SquashedActorSophy(TorchActorModule):
         self.rnn_lens = list(rnn_lens)
 
     def forward(self, observation, test=False, with_logprob=True, save_hidden=False):
-        self.rnn_block_api.flatten_parameters()
+        # self.rnn_block_api.flatten_parameters()
         # self.rnn_block_cat.flatten_parameters()
 
         batch_size = observation[0].shape[0]
         if type(observation) is tuple:
             observation = list(observation)
 
-        if not save_hidden or self.h0 is None or self.c0 is None:
-            device = observation[0].device
-            h0 = Variable(
-                torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
-            )
+        # if not save_hidden or self.h0 is None or self.c0 is None:
+        #     device = observation[0].device
+        #     h0 = Variable(
+        #         torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
+        #     )
             # c0 = Variable(
             #     torch.zeros((self.rnn_lens[0], self.rnn_sizes[0]), device=device)
             # )
-        else:
-            h0 = self.h0
+        # else:
+        #     h0 = self.h0
             # c0 = self.c0
 
         for index, _ in enumerate(observation):
@@ -285,9 +288,9 @@ class SquashedActorSophy(TorchActorModule):
             mlp_api_out = self.layernorm_mlp(mlp_api_out)
 
         # rnn_block_api_out, (h0, c0) = self.rnn_block_api(mlp_api_out, (h0, c0))
-        rnn_block_api_out, h0 = self.rnn_block_api(mlp_api_out, h0)
+        # rnn_block_api_out, h0 = self.rnn_block_api(mlp_api_out, h0)
 
-        attn_output, _ = self.attentionRNN(rnn_block_api_out, rnn_block_api_out, rnn_block_api_out)
+        attn_output, _ = self.attentionRNN(mlp_api_out, mlp_api_out, mlp_api_out)
 
         model_out = self.model_out(attn_output)
 
@@ -323,8 +326,8 @@ class SquashedActorSophy(TorchActorModule):
 
         pi_action = pi_action.squeeze()
 
-        if save_hidden:
-            self.h0 = h0
+        # if save_hidden:
+        #     self.h0 = h0
             # self.c0 = c0
 
         return pi_action, logp_pi

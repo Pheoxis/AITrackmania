@@ -19,7 +19,7 @@ CONFIG_FILE = TMRL_FOLDER / "config" / "config.json"
 with open(CONFIG_FILE) as f:
     TMRL_CONFIG = json.load(f)
 
-RUN_NAME = TMRL_CONFIG["RUN_NAME"]  # "SACv1_SPINUP_4_LIDAR_pretrained_test_9"
+RUN_NAME = TMRL_CONFIG["RUN_NAME"]
 
 # Maximum length of the local buffers for RolloutWorkers, Server and TrainerInterface:
 BUFFERS_MAXLEN = TMRL_CONFIG["BUFFERS_MAXLEN"]
