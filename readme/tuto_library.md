@@ -1115,6 +1115,7 @@ Note that `train()` returns a python dictionary in which you can store the metri
 
 ```python
     def train(self, batch):
+<<<<<<< HEAD
 
 
 """
@@ -1173,6 +1174,64 @@ if self.learn_entropy_coef:
   ret_dict["loss_entropy_coef"] = loss_alpha.detach()
   ret_dict["entropy_coef"] = alpha_t.item()
 return ret_dict  # dictionary of metrics to be logged
+=======
+        """
+        Adapted from the SAC implementation of OpenAI Spinup
+        
+        https://github.com/openai/spinningup/tree/master/spinup/algos/pytorch/sac
+        """
+        o, a, r, o2, d, _ = batch  # these tensors are collated on device
+        # note that we purposefully ignore the truncated signal ( _ )
+        # thus, our value estimator will not be affected by episode truncation
+        pi, logp_pi = self.model.actor(o)
+        loss_alpha = None
+        if self.learn_entropy_coef:
+            alpha_t = torch.exp(self.log_alpha.detach())
+            loss_alpha = -(self.log_alpha * (logp_pi + self.target_entropy).detach()).mean()
+        else:
+            alpha_t = self.alpha_t
+        if loss_alpha is not None:
+            self.alpha_optimizer.zero_grad()
+            loss_alpha.backward()
+            self.alpha_optimizer.step()
+        q1 = self.model.q1(o, a)
+        q2 = self.model.q2(o, a)
+        with torch.no_grad():
+            a2, logp_a2 = self.model.actor(o2)
+            q1_pi_targ = self.model_target.q1(o2, a2)
+            q2_pi_targ = self.model_target.q2(o2, a2)
+            q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
+            backup = r + self.gamma * (1 - d) * (q_pi_targ - alpha_t * logp_a2)
+        loss_q1 = ((q1 - backup)**2).mean()
+        loss_q2 = ((q2 - backup)**2).mean()
+        loss_q = loss_q1 + loss_q2
+        self.q_optimizer.zero_grad()
+        loss_q.backward()
+        self.q_optimizer.step()
+        for p in self.q_params:
+            p.requires_grad = False
+        q1_pi = self.model.q1(o, pi)
+        q2_pi = self.model.q2(o, pi)
+        q_pi = torch.min(q1_pi, q2_pi)
+        loss_pi = (alpha_t * logp_pi - q_pi).mean()
+        self.pi_optimizer.zero_grad()
+        loss_pi.backward()
+        self.pi_optimizer.step()
+        for p in self.q_params:
+            p.requires_grad = True
+        with torch.no_grad():
+            for p, p_targ in zip(self.model.parameters(), self.model_target.parameters()):
+                p_targ.data.mul_(self.polyak)
+                p_targ.data.add_((1 - self.polyak) * p.data)
+        ret_dict = dict(
+            loss_actor=loss_pi.detach().item(),
+            loss_critic=loss_q.detach().item(),
+        )
+        if self.learn_entropy_coef:
+            ret_dict["loss_entropy_coef"] = loss_alpha.detach().item()
+            ret_dict["entropy_coef"] = alpha_t.item()
+        return ret_dict  # dictionary of metrics to be logged
+>>>>>>> upstream/master
 ```
 
 This gives us our `training_agent_cls` argument, e.g.:

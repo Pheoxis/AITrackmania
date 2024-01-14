@@ -862,3 +862,4 @@ class TQCAgent(TrainingAgent):
             ret_dict["entropy_coef"] = alpha_t.item()
 
         return ret_dict
+
